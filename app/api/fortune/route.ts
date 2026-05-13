@@ -253,11 +253,13 @@ export async function POST(request: Request) {
 
         const unlocked = await isAccessUnlocked().catch(() => false);
         let config = null;
+        const candidateConfigs = [];
         let configDetail = "";
         try {
           if (unlocked) {
             try {
               config = await readFortuneConfig();
+              candidateConfigs.push(config);
               configDetail = "已读取站点私有模型配置。";
             } catch (error) {
               configDetail =
@@ -268,9 +270,24 @@ export async function POST(request: Request) {
           if (!config && runtimeConfig) {
             try {
               config = normalizeFortuneConfig(runtimeConfig);
+              candidateConfigs.push(config);
               configDetail = configDetail
-                ? `${configDetail} 已回退到浏览器自定义模型配置。`
+                ? `${configDetail} 已切换到浏览器自定义模型配置。`
                 : "已使用浏览器自定义模型配置。";
+            } catch (error) {
+              configDetail = `${configDetail}${configDetail ? " " : ""}${error instanceof Error ? `浏览器自定义模型配置不可用：${error.message}` : "浏览器自定义模型配置不可用。"}`;
+            }
+          } else if (config && runtimeConfig) {
+            try {
+              const browserConfig = normalizeFortuneConfig(runtimeConfig);
+              if (
+                browserConfig.baseUrl !== config.baseUrl ||
+                browserConfig.model !== config.model ||
+                browserConfig.apiKey !== config.apiKey
+              ) {
+                candidateConfigs.push(browserConfig);
+                configDetail = `${configDetail} 若私有模型失败，将自动尝试浏览器自定义模型配置。`;
+              }
             } catch (error) {
               configDetail = `${configDetail}${configDetail ? " " : ""}${error instanceof Error ? `浏览器自定义模型配置不可用：${error.message}` : "浏览器自定义模型配置不可用。"}`;
             }
@@ -293,7 +310,12 @@ export async function POST(request: Request) {
           ),
         });
 
-        const { analysis, source, detail } = await createFortuneAnalysis(profile, hexagram, config, input.roleCard);
+        const { analysis, source, detail } = await createFortuneAnalysis(
+          profile,
+          hexagram,
+          candidateConfigs,
+          input.roleCard,
+        );
         const board = buildDivinationBoard(profile, hexagram, "report");
 
         const result: FortuneResponse = {
@@ -307,7 +329,7 @@ export async function POST(request: Request) {
             generatedAt: nowIso(),
           },
           meta: {
-            model: config?.model ?? "classic-local",
+            model: candidateConfigs[0]?.model ?? "classic-local",
             source,
             configMode: unlocked ? "private" : "custom",
             sourceDetail: [configDetail, detail].filter(Boolean).join(" "),

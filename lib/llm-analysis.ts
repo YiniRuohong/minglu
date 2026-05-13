@@ -8,6 +8,8 @@ type Config = {
   headers?: Record<string, string>;
 };
 
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
 const stemElementMap: Record<string, keyof FiveElementStats> = {
   甲: "wood",
   乙: "wood",
@@ -64,6 +66,15 @@ function extractJson(text: string) {
   const codeBlock = text.match(/```json\s*([\s\S]*?)```/i)?.[1];
   const candidate = codeBlock ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   return JSON.parse(candidate) as FortuneAnalysis;
+}
+
+function trimErrorBody(text: string) {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getDayElement(profile: BaziProfile) {
@@ -403,13 +414,84 @@ ${JSON.stringify(anchors, null, 2)}
 `;
 }
 
+async function callModelAnalysis(
+  profile: BaziProfile,
+  hexagram: Hexagram,
+  config: Config,
+  roleCard?: RoleCard,
+) {
+  let lastError = "";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(config.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+          ...config.headers,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          temperature: config.temperature ?? 0.7,
+          messages: [
+            {
+              role: "system",
+              content: roleCard?.systemPrompt
+                ? `${roleCard.systemPrompt}\n\n你输出严格 JSON，不要输出额外说明。`
+                : "你输出严格 JSON，不要输出额外说明。",
+            },
+            {
+              role: "user",
+              content: buildPrompt(profile, hexagram, roleCard),
+            },
+          ],
+        }),
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const body = trimErrorBody(await response.text().catch(() => ""));
+        lastError = `模型 ${config.model} 请求失败: ${response.status}${body ? ` ${body}` : ""}`;
+        if (RETRYABLE_STATUS.has(response.status) && attempt < 3) {
+          await wait(400 * attempt);
+          continue;
+        }
+        throw new Error(lastError);
+      }
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error(`模型 ${config.model} 未返回内容。`);
+      }
+
+      return {
+        analysis: extractJson(content),
+        detail: `已成功调用 ${config.model}。`,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : `模型 ${config.model} 调用失败。`;
+      if (attempt < 3) {
+        await wait(400 * attempt);
+        continue;
+      }
+    }
+  }
+
+  throw new Error(lastError || `模型 ${config.model} 调用失败。`);
+}
+
 export async function createFortuneAnalysis(
   profile: BaziProfile,
   hexagram: Hexagram,
-  config?: Config | null,
+  config?: Config | Config[] | null,
   roleCard?: RoleCard,
 ): Promise<{ analysis: FortuneAnalysis; source: "llm" | "fallback"; detail?: string }> {
-  if (!config) {
+  const configs = Array.isArray(config) ? config : config ? [config] : [];
+  if (configs.length === 0) {
     return {
       analysis: buildFallback(profile, hexagram),
       source: "fallback",
@@ -417,55 +499,23 @@ export async function createFortuneAnalysis(
     };
   }
 
-  try {
-    const response = await fetch(config.baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-        ...config.headers,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: config.temperature ?? 0.7,
-        messages: [
-          {
-            role: "system",
-            content: roleCard?.systemPrompt
-              ? `${roleCard.systemPrompt}\n\n你输出严格 JSON，不要输出额外说明。`
-              : "你输出严格 JSON，不要输出额外说明。",
-          },
-          {
-            role: "user",
-            content: buildPrompt(profile, hexagram, roleCard),
-          },
-        ],
-      }),
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`上游模型请求失败: ${response.status}`);
+  const errors: string[] = [];
+  for (const currentConfig of configs) {
+    try {
+      const result = await callModelAnalysis(profile, hexagram, currentConfig, roleCard);
+      return {
+        analysis: result.analysis,
+        source: "llm",
+        detail: result.detail,
+      };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : `模型 ${currentConfig.model} 调用失败。`);
     }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("上游模型未返回内容。");
-    }
-
-    return {
-      analysis: extractJson(content),
-      source: "llm",
-      detail: `已成功调用 ${config.model}。`,
-    };
-  } catch (error) {
-    return {
-      analysis: buildFallback(profile, hexagram),
-      source: "fallback",
-      detail: error instanceof Error ? error.message : "模型调用失败，已使用本地规则兜底。",
-    };
   }
+
+  return {
+    analysis: buildFallback(profile, hexagram),
+    source: "fallback",
+    detail: errors.join(" | "),
+  };
 }
