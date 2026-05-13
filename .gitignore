@@ -1,0 +1,9 @@
+.next
+node_modules
+fortune.config.local.json
+config/fortune.config.json
+config/access.config.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

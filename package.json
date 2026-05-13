@@ -1,0 +1,36 @@
+{
+  "name": "ming-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A design-forward fortune web app with BaZi charting and OpenAI-compatible API support.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "bazi",
+    "fortune",
+    "nextjs",
+    "openai-compatible"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "lunar-typescript": "^1.8.6",
+    "lxgw-wenkai-webfont": "^1.7.0",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.6",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.2.6",
+    "typescript": "^5.9.3"
+  }
+}
