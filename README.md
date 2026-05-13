@@ -11,47 +11,13 @@
 
 ```bash
 npm install
+cp .env.example .env.local
 cp config/fortune.config.example.json config/fortune.config.json
 cp config/access.config.example.json config/access.config.json
 npm run dev
 ```
 
 打开 [http://localhost:3000](http://localhost:3000)。
-
-## 本地配置文件
-
-`config/fortune.config.json`
-
-```json
-{
-  "baseUrl": "https://api.openai.com/v1",
-  "apiKey": "sk-your-api-key",
-  "model": "gpt-4.1-mini",
-  "temperature": 0.8,
-  "headers": {}
-}
-```
-
-说明：
-
-- `baseUrl` 支持 OpenAI 兼容地址，程序会自动补全到 `/chat/completions`
-- `headers` 可用于某些兼容服务要求的额外请求头
-- 配置文件只在服务端读取，避免把 Key 暴露到浏览器
-- 生产部署时更推荐使用环境变量，不推荐把这份文件带到线上
-
-`config/access.config.json`
-
-```json
-{
-  "accessPassword": "change-this-password"
-}
-```
-
-说明：
-
-- 输入访问密码后，页面才会直接调用服务端保存的 `config/fortune.config.json`
-- 未输入访问密码时，访客只能填写并保存自己的 OpenAI 兼容 `baseUrl / model / apiKey` 后再推演
-- 也可以用环境变量 `ACCESS_PASSWORD` 覆盖 `config/access.config.json`
 
 ## Vercel 部署
 
@@ -60,36 +26,19 @@ npm run dev
 - `Vercel / 生产环境`：优先读取环境变量
 - `本地开发`：如果没配环境变量，再回退到 `config/*.json`
 
-在 Vercel 项目设置里添加这些环境变量：
+Vercel 中需要配置的环境变量统一放在：
 
-```bash
-FORTUNE_BASE_URL=https://api.openai.com/v1
-FORTUNE_API_KEY=sk-your-api-key
-FORTUNE_MODEL=gpt-4.1-mini
-FORTUNE_TEMPERATURE=0.8
-FORTUNE_HEADERS_JSON={}
-ACCESS_PASSWORD=change-this-password
-```
+- [.env.example](/Users/andyzhao/Documents/claude code/ming_web/.env.example)
 
-说明：
+其他可变项和配置说明统一放在：
 
-- `FORTUNE_BASE_URL`、`FORTUNE_API_KEY`、`FORTUNE_MODEL` 是私有默认推演通道必填项
-- `FORTUNE_TEMPERATURE` 可选，默认会回退到代码中的温度设定
-- `FORTUNE_HEADERS_JSON` 可选，用于某些 OpenAI 兼容网关的额外请求头，格式必须是 JSON 字符串
-- `ACCESS_PASSWORD` 是访问密码，只有输入正确后才会调用你的私有默认配置
-- 如果不配 `ACCESS_PASSWORD`，站点仍可打开，但“私有配置解锁”入口会提示未配置
+- [docs/configuration.md](/Users/andyzhao/Documents/claude code/ming_web/docs/configuration.md)
 
 推荐部署流程：
 
 ```bash
 npm run build
 vercel
-```
-
-如果你想在本地先模拟线上环境，可以直接复制：
-
-```bash
-cp .env.example .env.local
 ```
 
 ## 说明
