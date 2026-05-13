@@ -691,7 +691,7 @@ export default function HomePage() {
     const payload: FortuneRequest = {
       ...form,
       roleCard,
-      runtimeConfig: unlocked ? undefined : customConfig,
+      runtimeConfig: customConfigReady ? customConfig : undefined,
     };
 
     const userMessage: ConversationMessage = {
@@ -1031,6 +1031,7 @@ export default function HomePage() {
                       <h3>命盘摘要</h3>
                       <p>当前右侧总盘与下方报告保持同一份推演结果。</p>
                       <p>{result.meta.source === "llm" ? `本次由 ${result.meta.model} 参与深度解读。` : "本次未接入模型，使用本地规则兜底。"}</p>
+                      {result.meta.sourceDetail ? <p>{result.meta.sourceDetail}</p> : null}
                       <p>{result.analysis.summary}</p>
                     </section>
                     <section className="report-side-card">

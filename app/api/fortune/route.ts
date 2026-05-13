@@ -253,12 +253,28 @@ export async function POST(request: Request) {
 
         const unlocked = await isAccessUnlocked().catch(() => false);
         let config = null;
+        let configDetail = "";
         try {
-          config = unlocked
-            ? await readFortuneConfig()
-            : runtimeConfig
-              ? normalizeFortuneConfig(runtimeConfig)
-              : null;
+          if (unlocked) {
+            try {
+              config = await readFortuneConfig();
+              configDetail = "已读取站点私有模型配置。";
+            } catch (error) {
+              configDetail =
+                error instanceof Error ? `站点私有模型不可用：${error.message}` : "站点私有模型不可用。";
+            }
+          }
+
+          if (!config && runtimeConfig) {
+            try {
+              config = normalizeFortuneConfig(runtimeConfig);
+              configDetail = configDetail
+                ? `${configDetail} 已回退到浏览器自定义模型配置。`
+                : "已使用浏览器自定义模型配置。";
+            } catch (error) {
+              configDetail = `${configDetail}${configDetail ? " " : ""}${error instanceof Error ? `浏览器自定义模型配置不可用：${error.message}` : "浏览器自定义模型配置不可用。"}`;
+            }
+          }
         } catch {
           config = null;
         }
@@ -277,7 +293,7 @@ export async function POST(request: Request) {
           ),
         });
 
-        const { analysis, source } = await createFortuneAnalysis(profile, hexagram, config, input.roleCard);
+        const { analysis, source, detail } = await createFortuneAnalysis(profile, hexagram, config, input.roleCard);
         const board = buildDivinationBoard(profile, hexagram, "report");
 
         const result: FortuneResponse = {
@@ -294,6 +310,7 @@ export async function POST(request: Request) {
             model: config?.model ?? "classic-local",
             source,
             configMode: unlocked ? "private" : "custom",
+            sourceDetail: [configDetail, detail].filter(Boolean).join(" "),
           },
         };
 
@@ -320,8 +337,8 @@ export async function POST(request: Request) {
             "report",
             source === "llm" ? "模型深度解读已接入" : "回退到本地兜底",
             source === "llm"
-              ? `本次已调用 ${config?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。`
-              : "本次未成功调用模型，当前展示的是本地规则兜底分析。若希望模型更多参与，请检查访问解锁状态或自定义模型配置。",
+              ? `本次已调用 ${config?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。${[configDetail, detail].filter(Boolean).join(" ")}`
+              : `本次未成功调用模型，当前展示的是本地规则兜底分析。${[configDetail, detail].filter(Boolean).join(" ")}`,
           ),
         });
         send({

@@ -211,6 +211,7 @@ export type FortuneResponse = {
     model: string;
     source: "llm" | "fallback";
     configMode: "private" | "custom";
+    sourceDetail?: string;
   };
 };
 

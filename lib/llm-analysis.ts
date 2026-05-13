@@ -408,11 +408,12 @@ export async function createFortuneAnalysis(
   hexagram: Hexagram,
   config?: Config | null,
   roleCard?: RoleCard,
-): Promise<{ analysis: FortuneAnalysis; source: "llm" | "fallback" }> {
+): Promise<{ analysis: FortuneAnalysis; source: "llm" | "fallback"; detail?: string }> {
   if (!config) {
     return {
       analysis: buildFallback(profile, hexagram),
       source: "fallback",
+      detail: "未提供可用模型配置，已使用本地规则兜底。",
     };
   }
 
@@ -458,11 +459,13 @@ export async function createFortuneAnalysis(
     return {
       analysis: extractJson(content),
       source: "llm",
+      detail: `已成功调用 ${config.model}。`,
     };
-  } catch {
+  } catch (error) {
     return {
       analysis: buildFallback(profile, hexagram),
       source: "fallback",
+      detail: error instanceof Error ? error.message : "模型调用失败，已使用本地规则兜底。",
     };
   }
 }
