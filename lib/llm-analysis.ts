@@ -321,7 +321,19 @@ ${hexagram.interpretation}
   };
 }
 
+function buildPromptAnchors(profile: BaziProfile, hexagram: Hexagram) {
+  const fallback = buildFallback(profile, hexagram);
+  return {
+    localSummary: fallback.summary,
+    localSections: fallback.sections,
+    localKeyMoments: fallback.keyMoments,
+    localSuggestions: fallback.suggestions,
+    localPhaseExplanations: fallback.phaseExplanations,
+  };
+}
+
 function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCard) {
+  const anchors = buildPromptAnchors(profile, hexagram);
   return `
 你是一名四柱八字研究助手。分析时请严格以子平法为主，优先遵循《渊海子平》《子平真诠》的判断顺序，并参考《滴天髓》《三命通会》《穷通宝典》《千里命稿》《神峰通考》作补充。不要混用六爻、紫微、星宗、心理测试式表达。
 
@@ -346,7 +358,9 @@ function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCa
 3. 若信息不足或古法上存在分歧，必须直接点明
 4. 必须给出可验证的已发生关键事件，用于用户校验
 5. 四柱为主体；在线模拟摇卦 ${hexagram.name} 只能作为当前问题的辅助节奏，不得改写四柱主判断
-6. 输出严格为 JSON，不要额外说明
+6. 允许充分展开分析，但每一段都必须回到命盘证据，不要空泛玄谈
+7. 你会收到一份“本地结构锚点”，那是程序根据固定规则提炼出的基础判断。你应在不违背这些基础锚点的前提下，进一步深化推理、补充分歧点、扩展已发生事件校验，而不是机械复述锚点
+8. 输出严格为 JSON，不要额外说明
 7. JSON 结构如下：
 {
   "summary": "120字以内总述",
@@ -371,8 +385,9 @@ function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCa
   ],
   "fullReport": "markdown 完整报告"
 }
-8. phaseExplanations 至少覆盖 chart、tengod、balance、dayun、hexagram、report_draft
-9. fullReport 至少覆盖命盘原局、判断次序、月令旺衰、十神扶抑、大运观察、在线摇卦辅助、可验证方向、提醒
+9. phaseExplanations 至少覆盖 chart、tengod、balance、dayun、hexagram、report_draft
+10. fullReport 至少覆盖命盘原局、判断次序、月令旺衰、十神扶抑、大运观察、在线摇卦辅助、可验证方向、提醒
+11. sections、keyMoments、fullReport 都要明显比“本地结构锚点”更细、更有解释力
 
 角色卡：
 ${roleCard ? JSON.stringify(roleCard, null, 2) : "未提供额外角色卡。"}
@@ -382,6 +397,9 @@ ${JSON.stringify(profile, null, 2)}
 
 在线摇卦资料：
 ${JSON.stringify(hexagram, null, 2)}
+
+本地结构锚点：
+${JSON.stringify(anchors, null, 2)}
 `;
 }
 
@@ -408,7 +426,7 @@ export async function createFortuneAnalysis(
       },
       body: JSON.stringify({
         model: config.model,
-        temperature: config.temperature ?? 0.4,
+        temperature: config.temperature ?? 0.7,
         messages: [
           {
             role: "system",

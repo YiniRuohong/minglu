@@ -910,6 +910,7 @@ export default function HomePage() {
                 <span>{form.name || "未配置命主姓名"}</span>
                 <span>{form.birthDate || "未配置生日"}</span>
                 <span>{activeConfigLabel}</span>
+                <span>{result ? (result.meta.source === "llm" ? `解读来源 ${result.meta.model}` : "解读来源 本地兜底") : "等待推演"}</span>
               </div>
               <textarea
                 rows={4}
@@ -1029,6 +1030,7 @@ export default function HomePage() {
                     <section className="report-side-card">
                       <h3>命盘摘要</h3>
                       <p>当前右侧总盘与下方报告保持同一份推演结果。</p>
+                      <p>{result.meta.source === "llm" ? `本次由 ${result.meta.model} 参与深度解读。` : "本次未接入模型，使用本地规则兜底。"}</p>
                       <p>{result.analysis.summary}</p>
                     </section>
                     <section className="report-side-card">

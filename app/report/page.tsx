@@ -44,6 +44,7 @@ export default function ReportPage() {
           </div>
           <div className="report-meta-stack">
             <span>{reportData.meta.model}</span>
+            <span>{reportData.meta.source === "llm" ? "LLM 深度解读" : "本地规则兜底"}</span>
             <span>{reportData.profile.subject.solarText}</span>
             <span>{reportData.profile.subject.birthPlace}</span>
           </div>

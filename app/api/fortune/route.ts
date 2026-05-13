@@ -316,6 +316,17 @@ export async function POST(request: Request) {
         send({
           type: "node",
           node: buildNode(
+            "node-analysis-source",
+            "report",
+            source === "llm" ? "模型深度解读已接入" : "回退到本地兜底",
+            source === "llm"
+              ? `本次已调用 ${config?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。`
+              : "本次未成功调用模型，当前展示的是本地规则兜底分析。若希望模型更多参与，请检查访问解锁状态或自定义模型配置。",
+          ),
+        });
+        send({
+          type: "node",
+          node: buildNode(
             "node-report",
             "report",
             "总报告生成完成",
@@ -325,7 +336,7 @@ export async function POST(request: Request) {
         send(
           assistantMessage(
             "msg-report",
-            `推演完成。结论摘要：${analysis.summary}`,
+            `推演完成。${source === "llm" ? "本次已接入大模型深度解读。" : "本次未接入模型，使用本地兜底分析。"} 结论摘要：${analysis.summary}`,
             "report",
           ),
         );
