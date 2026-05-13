@@ -110,7 +110,7 @@ function summarizeFiveElements(stats: FiveElementStats): string {
   const strongest = ordered[0];
   const weakest = ordered[ordered.length - 1];
 
-  return `五行重心偏向${elementLabel[strongest[0] as keyof FiveElementStats]}，${elementLabel[weakest[0] as keyof FiveElementStats]}相对偏弱。此统计以天干、地支与藏干权重估算，用于页面可视化和问卦引导，不替代专业命理定格。`;
+  return `五行分布中${elementLabel[strongest[0] as keyof FiveElementStats]}相对偏盛，${elementLabel[weakest[0] as keyof FiveElementStats]}相对偏弱。此统计仅作四柱辅助观察，正式判断仍应以月令、通根、透干与扶抑次序为主。`;
 }
 
 function formatSolarText(solar: Solar) {

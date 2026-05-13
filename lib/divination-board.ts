@@ -4,253 +4,111 @@ import type {
   DivinationBoard,
   Hexagram,
   PalaceCell,
-  PalaceConnection,
   PhaseId,
 } from "@/lib/types";
 
-const palaceNames = [
-  "命宫",
-  "兄弟",
-  "夫妻",
-  "子女",
-  "财帛",
-  "疾厄",
-  "迁移",
-  "交友",
-  "官禄",
-  "田宅",
-  "福德",
-  "父母",
-];
-
-const palaceAges = [
-  "3-12",
-  "13-22",
-  "23-32",
-  "33-42",
-  "43-52",
-  "53-62",
-  "63-72",
-  "73-82",
-  "83-92",
-  "93-102",
-  "103-112",
-  "113-122",
-];
-
-const branches = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
-
-const starPool = {
-  wood: ["天机", "贪狼", "文昌", "左辅"],
-  fire: ["太阳", "廉贞", "火星", "天喜"],
-  earth: ["紫微", "天府", "天相", "禄存"],
-  metal: ["武曲", "七杀", "文曲", "右弼"],
-  water: ["太阴", "巨门", "天梁", "破军"],
+const phaseTitleMap: Record<PhaseId, string> = {
+  intake: "命盘准备中",
+  calendar: "历法校定",
+  chart: "四柱定盘",
+  tengod: "十神分层",
+  balance: "扶抑取向",
+  dayun: "大运排比",
+  hexagram: "在线摇卦",
+  palace: "古法摘要",
+  connection: "原局与大运",
+  report_draft: "报告收束",
+  report: "总报告归档",
 };
 
-const phaseMeta: Record<
-  PhaseId,
-  {
-    title: string;
-    pulse: number;
-    focus: string[];
-    connections: PalaceConnection[];
-  }
-> = {
-  intake: {
-    title: "命盘准备中",
-    pulse: 24,
-    focus: ["命宫", "父母"],
-    connections: [{ from: "命宫", to: "父母", label: "基础资料", emphasis: "secondary" }],
-  },
-  calendar: {
-    title: "历法校定",
-    pulse: 34,
-    focus: ["命宫", "田宅", "父母"],
-    connections: [
-      { from: "父母", to: "命宫", label: "出生基准", emphasis: "primary" },
-      { from: "命宫", to: "田宅", label: "时空落点", emphasis: "secondary" },
-    ],
-  },
-  chart: {
-    title: "四柱与宫位映射",
-    pulse: 48,
-    focus: ["命宫", "福德", "田宅"],
-    connections: [
-      { from: "命宫", to: "福德", label: "日主入宫", emphasis: "primary" },
-      { from: "命宫", to: "田宅", label: "原局根基", emphasis: "secondary" },
-    ],
-  },
-  tengod: {
-    title: "十神关系解构",
-    pulse: 57,
-    focus: ["兄弟", "夫妻", "父母"],
-    connections: [
-      { from: "夫妻", to: "兄弟", label: "人际映射", emphasis: "secondary" },
-      { from: "父母", to: "兄弟", label: "源流关系", emphasis: "primary" },
-    ],
-  },
-  balance: {
-    title: "五行动态校准",
-    pulse: 66,
-    focus: ["财帛", "官禄", "疾厄"],
-    connections: [
-      { from: "财帛", to: "官禄", label: "资源流向", emphasis: "primary" },
-      { from: "官禄", to: "疾厄", label: "负荷校验", emphasis: "secondary" },
-    ],
-  },
-  dayun: {
-    title: "大运窗口扫描",
-    pulse: 73,
-    focus: ["迁移", "官禄", "福德"],
-    connections: [
-      { from: "迁移", to: "官禄", label: "外部机会", emphasis: "primary" },
-      { from: "福德", to: "迁移", label: "内驱变化", emphasis: "secondary" },
-    ],
-  },
-  hexagram: {
-    title: "卦象落点定位",
-    pulse: 79,
-    focus: ["福德", "迁移", "夫妻"],
-    connections: [
-      { from: "福德", to: "迁移", label: "卦势引动", emphasis: "primary" },
-      { from: "迁移", to: "夫妻", label: "关系牵连", emphasis: "secondary" },
-    ],
-  },
-  palace: {
-    title: "宫位推演展开",
-    pulse: 84,
-    focus: ["夫妻", "迁移", "交友", "官禄"],
-    connections: [
-      { from: "交友", to: "官禄", label: "外援网络", emphasis: "secondary" },
-      { from: "迁移", to: "官禄", label: "去向决策", emphasis: "primary" },
-      { from: "夫妻", to: "迁移", label: "关系约束", emphasis: "secondary" },
-    ],
-  },
-  connection: {
-    title: "宫位联动成图",
-    pulse: 89,
-    focus: ["命宫", "官禄", "迁移", "福德"],
-    connections: [
-      { from: "命宫", to: "官禄", label: "主线", emphasis: "primary" },
-      { from: "官禄", to: "迁移", label: "落地路径", emphasis: "primary" },
-      { from: "福德", to: "命宫", label: "心理阈值", emphasis: "secondary" },
-    ],
-  },
-  report_draft: {
-    title: "报告框架收束",
-    pulse: 93,
-    focus: ["命宫", "官禄", "迁移", "财帛"],
-    connections: [
-      { from: "命宫", to: "财帛", label: "价值排序", emphasis: "secondary" },
-      { from: "官禄", to: "迁移", label: "结论路径", emphasis: "primary" },
-    ],
-  },
-  report: {
-    title: "总报告归档",
-    pulse: 96,
-    focus: ["命宫", "官禄", "福德", "迁移"],
-    connections: [
-      { from: "命宫", to: "官禄", label: "核心判断", emphasis: "primary" },
-      { from: "福德", to: "迁移", label: "节奏修正", emphasis: "secondary" },
-      { from: "迁移", to: "官禄", label: "执行出口", emphasis: "primary" },
-    ],
-  },
+const phasePulseMap: Record<PhaseId, number> = {
+  intake: 18,
+  calendar: 30,
+  chart: 48,
+  tengod: 62,
+  balance: 74,
+  dayun: 82,
+  hexagram: 82,
+  palace: 88,
+  connection: 90,
+  report_draft: 94,
+  report: 98,
 };
 
-function getElementRanking(profile: BaziProfile) {
-  return Object.entries(profile.fiveElements)
-    .sort((a, b) => b[1] - a[1])
-    .map(([key]) => key as keyof typeof starPool);
+const elementMap: Record<string, BoardMetric["tone"]> = {
+  甲: "wood",
+  乙: "wood",
+  丙: "fire",
+  丁: "fire",
+  戊: "earth",
+  己: "earth",
+  庚: "metal",
+  辛: "metal",
+  壬: "water",
+  癸: "water",
+};
+
+function getToneByStem(stem: string): BoardMetric["tone"] {
+  return elementMap[stem] ?? "neutral";
 }
 
-function getStemBranchBase(profile: BaziProfile) {
-  const branch = profile.pillars.year.branch;
-  const index = branches.indexOf(branch);
-  return index >= 0 ? index : 0;
+function getDayMasterStrength(profile: BaziProfile) {
+  const ordered = Object.entries(profile.fiveElements).sort((a, b) => b[1] - a[1]);
+  const strongest = ordered[0]?.[0];
+  const weakest = ordered[ordered.length - 1]?.[0];
+  const dayTone = getToneByStem(profile.dayMaster);
+
+  if (strongest === dayTone) return "日主得势";
+  if (weakest === dayTone) return "日主失势";
+  return "日主待辨";
 }
 
-function buildPalaces(profile: BaziProfile, phase: PhaseId, question: string): PalaceCell[] {
-  const ranking = getElementRanking(profile);
-  const base = getStemBranchBase(profile);
-  const activeNames = new Set(phaseMeta[phase].focus);
+function buildPalaces(profile: BaziProfile): PalaceCell[] {
+  const pillars = [
+    { name: "年柱", pillar: profile.pillars.year, ageBand: "祖上", highlight: false },
+    { name: "月柱", pillar: profile.pillars.month, ageBand: "提纲", highlight: true },
+    { name: "日柱", pillar: profile.pillars.day, ageBand: "命主", highlight: true },
+    { name: "时柱", pillar: profile.pillars.hour, ageBand: "归宿", highlight: false },
+  ];
 
-  if (question.includes("事业")) {
-    activeNames.add("官禄");
-    activeNames.add("迁移");
-    activeNames.add("财帛");
-  }
-  if (question.includes("感情") || question.includes("婚")) {
-    activeNames.add("夫妻");
-    activeNames.add("福德");
-  }
-  if (question.includes("城市") || question.includes("去哪")) {
-    activeNames.add("迁移");
-    activeNames.add("官禄");
-  }
-
-  return palaceNames.map((name, index) => {
-    const element = ranking[index % ranking.length];
-    const stars = [
-      starPool[element][index % starPool[element].length],
-      starPool[ranking[(index + 1) % ranking.length]][(index + 2) % 4],
-    ];
-    const score = 58 + ((index * 7 + profile.currentAge) % 31);
-    const marker = score > 78 ? "旺" : score > 66 ? "引" : score > 60 ? "平" : "守";
-
-    return {
-      name,
-      branch: branches[(base + index) % 12],
-      ageBand: palaceAges[index],
-      stars,
-      score,
-      marker,
-      highlight: activeNames.has(name),
-    };
-  });
+  return pillars.map(({ name, pillar, ageBand, highlight }) => ({
+    name,
+    branch: pillar.branch,
+    ageBand,
+    stars: [pillar.value, pillar.stemTenGod || pillar.wuxing, ...pillar.hiddenStems.slice(0, 2)],
+    score: 75,
+    marker: highlight ? "纲" : "参",
+    highlight,
+  }));
 }
 
-function buildMetrics(profile: BaziProfile, hexagram: Hexagram, phase: PhaseId): BoardMetric[] {
-  const dominant = Object.entries(profile.fiveElements).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const weakest = Object.entries(profile.fiveElements).sort((a, b) => a[1] - b[1])[0]?.[0];
+function buildMetrics(profile: BaziProfile, phase: PhaseId, hexagram: Hexagram): BoardMetric[] {
+  const topLuck = profile.daYun[0]?.label ?? "待定";
 
   return [
     {
       label: "当前相位",
-      value: phaseMeta[phase].title,
+      value: phaseTitleMap[phase],
       tone: "neutral",
     },
     {
-      label: "主导五行",
-      value:
-        dominant === "wood"
-          ? "木"
-          : dominant === "fire"
-            ? "火"
-            : dominant === "earth"
-              ? "土"
-              : dominant === "metal"
-                ? "金"
-                : "水",
-      tone: (dominant as BoardMetric["tone"]) ?? "neutral",
+      label: "日主",
+      value: profile.dayMaster,
+      tone: getToneByStem(profile.dayMaster),
     },
     {
-      label: "待补五行",
-      value:
-        weakest === "wood"
-          ? "木"
-          : weakest === "fire"
-            ? "火"
-            : weakest === "earth"
-              ? "土"
-              : weakest === "metal"
-                ? "金"
-                : "水",
-      tone: (weakest as BoardMetric["tone"]) ?? "neutral",
+      label: "月令",
+      value: profile.pillars.month.branch,
+      tone: "neutral",
     },
     {
-      label: "卦象方向",
-      value: `${hexagram.upperTrigram}上${hexagram.lowerTrigram}下`,
+      label: "首步大运",
+      value: topLuck,
+      tone: "neutral",
+    },
+    {
+      label: "问时卦",
+      value: hexagram.name.replace(/（.*$/, ""),
       tone: "neutral",
     },
   ];
@@ -261,30 +119,27 @@ export function buildDivinationBoard(
   hexagram: Hexagram,
   phase: PhaseId,
 ): DivinationBoard {
-  const palaces = buildPalaces(profile, phase, profile.subject.question);
-  const meta = phaseMeta[phase];
-  const highlights = palaces
-    .filter((palace) => palace.highlight)
-    .slice(0, 5)
-    .map((palace) => `${palace.name}见${palace.stars.join(" / ")}，当前标记为${palace.marker}`);
-
   return {
     phase,
-    title: meta.title,
-    subtitle: `${profile.subject.name} · ${profile.dayMaster}日主 · ${hexagram.name}`,
-    pulse: meta.pulse,
+    title: phaseTitleMap[phase],
+    subtitle: `${profile.subject.name} · ${profile.dayMaster}日主 · ${profile.pillars.month.value}月令`,
+    pulse: phasePulseMap[phase],
     centerText: [
-      `${profile.subject.gender} · ${profile.subject.birthPlace}`,
-      `阳历 ${profile.subject.solarText}`,
-      `农历 ${profile.subject.lunarText}`,
+      `四柱 ${profile.pillars.year.value} / ${profile.pillars.month.value} / ${profile.pillars.day.value} / ${profile.pillars.hour.value}`,
       `命宫 ${profile.mingGong} / 身宫 ${profile.shenGong}`,
-      `起运 ${profile.luckStart} · 当前 ${profile.currentAge} 岁`,
+      `本卦 ${hexagram.name}`,
     ],
-    highlights,
-    activePalaces: meta.focus,
-    connections: meta.connections,
-    palaces,
-    metrics: buildMetrics(profile, hexagram, phase),
+    highlights: [
+      `月令：${profile.pillars.month.value}`,
+      `日主：${profile.dayMaster}`,
+      `判断轴：${getDayMasterStrength(profile)}`,
+      `起运：${profile.luckStart}`,
+      `变卦：${hexagram.changedName}`,
+    ],
+    activePalaces: ["月柱", "日柱"],
+    connections: [],
+    palaces: buildPalaces(profile),
+    metrics: buildMetrics(profile, phase, hexagram),
     hexagramLines: hexagram.lines,
   };
 }

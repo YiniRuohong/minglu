@@ -25,11 +25,11 @@ const STORAGE_CUSTOM_CONFIG_KEY = "minglu.custom-config";
 
 const defaultRoleCard: RoleCard = {
   id: "default-bazi-guide",
-  name: "明命录推演师",
+  name: "明命录古法排盘",
   systemPrompt:
-    "你是一位中文命理推演助手，表达应克制、结构清晰、避免恐吓式断语。你需要优先输出可验证、可理解、可执行的判断。",
+    "你是一位遵循子平八字主线的中文命理助手，表达应克制、结构清晰、避免恐吓式断语。",
   guidance:
-    "结合四柱八字、五行强弱、宫位联动和当前提问语境来判断。多给阶段性趋势、行为建议和验证节点，少给绝对结论。",
+    "先看四柱原局，再看月令、通根、透干、十神与大运。在线摇卦只作为当前问题节奏辅助，不改写四柱主判断。",
 };
 
 const defaultForm: FortuneInput = {
@@ -48,7 +48,7 @@ const introMessage: ConversationMessage = {
   id: "system-intro",
   role: "system",
   kind: "text",
-  content: "先在设置里配置命主资料和角色卡，再像普通聊天一样提问。默认只显示关键节点，点开节点后才看更细的推演过程。",
+  content: "先在设置里填写命主资料，再直接提问。当前版本按子平八字主线分析，并会自动在线模拟摇卦。",
 };
 
 const defaultCustomConfig: ClientModelConfig = {
@@ -602,8 +602,12 @@ export default function HomePage() {
     () => customConfigReady && JSON.stringify(customConfig) === savedCustomConfigSnapshot,
     [customConfig, customConfigReady, savedCustomConfigSnapshot],
   );
-  const canRunFortune = unlocked || customConfigReady;
-  const activeConfigLabel = unlocked ? "站点私有配置" : "访客自定义配置";
+  const canRunFortune = true;
+  const activeConfigLabel = unlocked
+    ? "站点私有模型"
+    : customConfigReady
+      ? "访客自定义模型"
+      : "本地古法兜底";
 
   const orderedNodes = useMemo(
     () =>
@@ -675,12 +679,6 @@ export default function HomePage() {
   };
 
   const runFortune = async () => {
-    if (!unlocked && !customConfigReady) {
-      setError("当前未解锁默认配置，请先输入访问密码，或先保存你自己的 OpenAI 兼容配置。");
-      setSettingsOpen(true);
-      return;
-    }
-
     setError(null);
     setResult(null);
     setNodes([]);
@@ -747,9 +745,9 @@ export default function HomePage() {
                     ...event.message,
                     content:
                       event.message.phase === "chart"
-                        ? "四柱已经排出，正在联动五行与十神。"
+                        ? "四柱已经排出，正在转入月令、十神与大运判断。"
                         : event.message.phase === "palace"
-                          ? "宫位联动已经切入，正在汇总关键判断。"
+                          ? "四柱摘要与问时卦已经同步，正在整理关键判断。"
                           : event.message.phase === "report"
                             ? "完整报告已经生成，右侧可以直接阅读。"
                             : event.message.content,
@@ -917,15 +915,14 @@ export default function HomePage() {
                 rows={4}
                 value={form.question}
                 onChange={(e) => setForm((prev) => ({ ...prev, question: e.target.value }))}
-                placeholder="直接像 ChatGPT 一样提问，例如：未来两年事业转型是否适合主动换城市？如果换，重点放在哪类机会？"
-                disabled={!canRunFortune && !isStreaming}
+                placeholder="直接提问，例如：未来两年事业转型如何看？感情婚配应先验哪一步大运？"
+                disabled={isStreaming}
               />
               <div className="composer-actions">
                 <div className="composer-hint">
-                  <code>{unlocked ? "config/fortune.config.json" : "浏览器本地访客配置"}</code>
+                  <code>{unlocked ? "private-model" : customConfigReady ? customConfig.model : "classic-local"}</code>
                   {reportReady ? <a href="#report-archive">查看报告</a> : null}
                   {error ? <span className="error-inline">{error}</span> : null}
-                  {!canRunFortune ? <span className="error-inline">先解锁私有配置或保存访客配置</span> : null}
                 </div>
                 <button onClick={runFortune} disabled={isStreaming || !canRunFortune}>
                   {isStreaming ? "推演中..." : "发送"}
@@ -952,7 +949,7 @@ export default function HomePage() {
             </div>
 
             <p className="board-subtitle">
-              {board?.subtitle ?? "右侧会根据当前阶段与卦象宫位实时高亮。"}
+              {board?.subtitle ?? "右侧会显示四柱摘要、起运与当前在线摇卦结果。"}
             </p>
 
             <div className="palace-board compact">
@@ -981,8 +978,8 @@ export default function HomePage() {
             <div className="signal-grid compact">
               <article className="signal-card compact">
                 <div className="signal-head compact">
-                  <h3>卦象</h3>
-                  <p>当前卦线</p>
+                  <h3>起卦</h3>
+                  <p>自动在线模拟六次摇铜钱</p>
                 </div>
                 <div className="hex-shell compact">
                   {[...(board?.hexagramLines ?? [])].reverse().map((line, index) => (
@@ -994,7 +991,7 @@ export default function HomePage() {
               <article className="signal-card compact">
                 <div className="signal-head compact">
                   <h3>焦点</h3>
-                  <p>当前高亮宫位</p>
+                  <p>当前判断摘要</p>
                 </div>
                 <div className="highlight-list compact">
                   {(board?.highlights ?? ["尚未开始推演"]).map((item) => (
@@ -1035,7 +1032,7 @@ export default function HomePage() {
                       <p>{result.analysis.summary}</p>
                     </section>
                     <section className="report-side-card">
-                      <h3>高亮宫位</h3>
+                      <h3>判断摘要</h3>
                       {result.board.highlights.map((item) => (
                         <p key={item}>{item}</p>
                       ))}

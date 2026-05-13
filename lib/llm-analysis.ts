@@ -1,4 +1,4 @@
-import type { BaziProfile, FortuneAnalysis, Hexagram, RoleCard } from "@/lib/types";
+import type { BaziProfile, FiveElementStats, FortuneAnalysis, Hexagram, RoleCard } from "@/lib/types";
 
 type Config = {
   baseUrl: string;
@@ -8,195 +8,379 @@ type Config = {
   headers?: Record<string, string>;
 };
 
+const stemElementMap: Record<string, keyof FiveElementStats> = {
+  甲: "wood",
+  乙: "wood",
+  丙: "fire",
+  丁: "fire",
+  戊: "earth",
+  己: "earth",
+  庚: "metal",
+  辛: "metal",
+  壬: "water",
+  癸: "water",
+};
+
+const branchElementMap: Record<string, keyof FiveElementStats> = {
+  寅: "wood",
+  卯: "wood",
+  巳: "fire",
+  午: "fire",
+  辰: "earth",
+  戌: "earth",
+  丑: "earth",
+  未: "earth",
+  申: "metal",
+  酉: "metal",
+  子: "water",
+  亥: "water",
+};
+
+const elementLabel: Record<keyof FiveElementStats, string> = {
+  wood: "木",
+  fire: "火",
+  earth: "土",
+  metal: "金",
+  water: "水",
+};
+
+const generateMap: Record<keyof FiveElementStats, keyof FiveElementStats> = {
+  wood: "fire",
+  fire: "earth",
+  earth: "metal",
+  metal: "water",
+  water: "wood",
+};
+
+const controlMap: Record<keyof FiveElementStats, keyof FiveElementStats> = {
+  wood: "earth",
+  fire: "metal",
+  earth: "water",
+  metal: "wood",
+  water: "fire",
+};
+
 function extractJson(text: string) {
   const codeBlock = text.match(/```json\s*([\s\S]*?)```/i)?.[1];
   const candidate = codeBlock ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   return JSON.parse(candidate) as FortuneAnalysis;
 }
 
-function fallbackAnalysis(profile: BaziProfile, hexagram: Hexagram): FortuneAnalysis {
-  const topLuck = profile.daYun[0]?.label ?? "待定";
+function getDayElement(profile: BaziProfile) {
+  return stemElementMap[profile.dayMaster];
+}
+
+function getMonthElement(profile: BaziProfile) {
+  return branchElementMap[profile.pillars.month.branch];
+}
+
+function elementGenerates(source: keyof FiveElementStats, target: keyof FiveElementStats) {
+  return generateMap[source] === target;
+}
+
+function elementControls(source: keyof FiveElementStats, target: keyof FiveElementStats) {
+  return controlMap[source] === target;
+}
+
+function isSupporting(dayElement: keyof FiveElementStats, other: keyof FiveElementStats) {
+  return other === dayElement || elementGenerates(other, dayElement);
+}
+
+function isDrainingOrRestraining(dayElement: keyof FiveElementStats, other: keyof FiveElementStats) {
+  return (
+    elementGenerates(dayElement, other) ||
+    elementControls(dayElement, other) ||
+    elementControls(other, dayElement)
+  );
+}
+
+function getRootCount(profile: BaziProfile) {
+  return Object.values(profile.pillars).filter((pillar) => pillar.hiddenStems.includes(profile.dayMaster)).length;
+}
+
+function getVisibleTenGods(profile: BaziProfile) {
+  return [
+    profile.pillars.year.stemTenGod,
+    profile.pillars.month.stemTenGod,
+    profile.pillars.hour.stemTenGod,
+    ...profile.pillars.year.branchTenGods,
+    ...profile.pillars.month.branchTenGods,
+    ...profile.pillars.day.branchTenGods,
+    ...profile.pillars.hour.branchTenGods,
+  ].filter(Boolean);
+}
+
+function getTopTenGod(tenGods: string[]) {
+  const counts = new Map<string, number>();
+  for (const god of tenGods) {
+    counts.set(god, (counts.get(god) ?? 0) + 1);
+  }
+
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "未定";
+}
+
+function judgeStrength(profile: BaziProfile) {
+  const dayElement = getDayElement(profile);
+  const monthElement = getMonthElement(profile);
+  const rootCount = getRootCount(profile);
+
+  const supportive = Object.entries(profile.fiveElements).reduce((sum, [key, value]) => {
+    return isSupporting(dayElement, key as keyof FiveElementStats) ? sum + value : sum;
+  }, 0);
+  const draining = Object.entries(profile.fiveElements).reduce((sum, [key, value]) => {
+    return isDrainingOrRestraining(dayElement, key as keyof FiveElementStats) ? sum + value : sum;
+  }, 0);
+
+  let score = supportive - draining + rootCount * 4;
+  if (monthElement === dayElement) {
+    score += 8;
+  } else if (elementGenerates(monthElement, dayElement)) {
+    score += 5;
+  } else if (elementControls(monthElement, dayElement)) {
+    score -= 5;
+  } else if (elementGenerates(dayElement, monthElement)) {
+    score -= 3;
+  }
+
+  if (score >= 10) return "偏强" as const;
+  if (score <= -6) return "偏弱" as const;
+  return "中和偏一方" as const;
+}
+
+function getUsefulDirection(profile: BaziProfile) {
+  const dayElement = getDayElement(profile);
+  const strength = judgeStrength(profile);
+  const supportElements = [
+    elementLabel[dayElement],
+    elementLabel[
+      (Object.keys(generateMap).find(
+        (key) => generateMap[key as keyof FiveElementStats] === dayElement,
+      ) as keyof FiveElementStats) ?? dayElement
+    ],
+  ];
+  const drainingElements = [
+    elementLabel[generateMap[dayElement]],
+    elementLabel[controlMap[dayElement]],
+  ];
+
+  if (strength === "偏强") {
+    return {
+      principle: "日主偏强，先取泄、耗、克，不宜再叠加比印。",
+      favorable: drainingElements.join("、"),
+      unfavorable: supportElements.join("、"),
+    };
+  }
+
+  if (strength === "偏弱") {
+    return {
+      principle: "日主偏弱，先扶身，取比劫、印绶，不宜再受财官食伤过度牵扯。",
+      favorable: supportElements.join("、"),
+      unfavorable: drainingElements.join("、"),
+    };
+  }
+
   return {
-    summary: `${profile.subject.name}的命盘以${profile.dayMaster}日主为核心，${profile.fiveElementSummary} 问题“${profile.subject.question}”对应的卦象为${hexagram.name}，更适合在看清资源与节奏之后推进，不宜急躁硬冲。`,
+    principle: "日主不至于一边倒，宜顺月令和原局流通，不宜机械偏补单一五行。",
+    favorable: "以流通顺畅者为先",
+    unfavorable: "以再造偏枯者为忌",
+  };
+}
+
+function buildFallback(profile: BaziProfile, hexagram: Hexagram): FortuneAnalysis {
+  const topLuck = profile.daYun[0]?.label ?? "待定";
+  const monthElement = elementLabel[getMonthElement(profile)];
+  const strength = judgeStrength(profile);
+  const rootCount = getRootCount(profile);
+  const topTenGod = getTopTenGod(getVisibleTenGods(profile));
+  const useful = getUsefulDirection(profile);
+
+  return {
+    summary: `${profile.subject.name}之命，以${profile.dayMaster}日元为主，生于${profile.pillars.month.value}月，先看月令，再察通根与透干。此局日主${strength}，${rootCount > 0 ? `地支有${rootCount}处通根` : "地支通根不显"}。当前问题另以${hexagram.name}作在线摇卦辅助，主看当下节奏，不改四柱本体。`,
     sections: [
       {
-        title: "日主与格局",
-        content: `日主为${profile.dayMaster}，页面中的四柱、十神与纳音已经排出。这里的本地兜底分析不会替代经典命理断格，但能提供一个稳定的阅读入口：先看月柱与日柱的关系，再看五行偏盛偏弱处是否与现实议题对应。`,
+        title: "月令与日主",
+        content: `古法以日元为主、月令为提纲。此局日主为${profile.dayMaster}，生于${profile.pillars.month.value}月，月令五行属${monthElement}，判断为${strength}。${rootCount > 0 ? `地支通根 ${rootCount} 处，可作得地之证。` : "地支根气不显，需更重视月令与透干。"}`
       },
       {
-        title: "十神与关系",
-        content: "十神关系需要结合月令、透干与藏干一并看。页面里已经把每柱的十神和藏干展开，适合用户先做结构阅读，再交给模型补充更细的人事含义。",
+        title: "十神与原局结构",
+        content: `四柱既定后，再看透干与藏干十神。此局可见十神以${topTenGod}较为突出，月柱为${profile.pillars.month.value}，日柱为${profile.pillars.day.value}。分析时应先看原局结构是否成势，再谈现实应象。`
       },
       {
-        title: "五行与调候",
-        content: `${profile.fiveElementSummary} 如果你此刻问的是事业与选择，宜优先补足短板五行所象征的能力面；如果问的是关系与情绪，则更要关注命局中过旺元素带来的执拗、焦灼或迟滞。`,
+        title: "扶抑与喜忌",
+        content: `${useful.principle} 当前可先收束为：喜 ${useful.favorable}，忌 ${useful.unfavorable}。这一步只能作为古法阅读入口，不宜把五行数量直接当作吉凶结论。`
       },
       {
-        title: "大运与近况",
-        content: `当前页面已排出起运时间与前八步大运。通常先回看${topLuck}这一步是否出现身份、城市、关系或职业方向的变化，再决定后续是否深入追问流年。`,
+        title: "大运与已发节点",
+        content: `原局定底色，大运定时机。当前首步参考大运为${topLuck}，建议优先回看该步大运前后，是否出现升学、搬迁、职业转换、家庭结构变化或情感关系转折，用来校正盘面。`
       },
       {
-        title: "卦象提示",
-        content: hexagram.interpretation,
+        title: "摇卦卦象",
+        content: `${hexagram.name}，变卦${hexagram.changedName}。${hexagram.interpretation}`
       },
     ],
     keyMoments: [
-      `首步大运参考为${topLuck}，可以回看该年龄段是否出现身份、城市或关系结构的变化。`,
-      "若近两年正在经历反复决策，通常意味着原问题并非缺答案，而是缺更稳定的执行边界。",
-      "适合拿过去一次明显转折期做校验，再决定是否追加更细的流年问答。",
+      `先回看 ${topLuck} 大运起始前后，是否发生居住地、身份或关系结构的明显转折。`,
+      "若月令所主之事长期压过个人主张，往往会在求学、入职、婚配这类节点表现得最明显。",
+      "若现实经历与“得令得地”判断长期相反，应优先复核出生时辰，而不是继续叠加新解释。",
+      "若近两三年反复做去留选择，往往对应大运与问时卦都在提示节奏切换。",
     ],
     suggestions: [
-      "把问题缩成一个最现实的抉择场景，再重新起问一次，分析会更准。",
-      "优先观察自己最弱五行对应的习惯短板，而不是只看吉凶结论。",
-      "把命盘当作结构化自省工具，而不是替代现实判断的指令。",
+      "先用已经发生过的大运阶段做校验，再谈未来流年，不要跳过验盘。",
+      "判断时以月令、通根、透干先后为序，不要直接把五行数量当吉凶结论。",
+      "在线摇卦只辅助当前问题节奏，不替代本命四柱结构。",
     ],
-    caution: "命理与卦象内容仅供传统文化体验与娱乐参考，不构成医疗、法律、投资或人生决策依据。",
+    caution: "命理内容只可作传统术数研究与娱乐参考，不应替代医疗、法律、投资或现实人生决策。",
     phaseExplanations: [
       {
         phase: "chart",
-        title: "四柱排盘依据",
+        title: "四柱定盘",
         evidence: [
-          `四柱为 ${profile.pillars.year.value} / ${profile.pillars.month.value} / ${profile.pillars.day.value} / ${profile.pillars.hour.value}`,
-          `日主为 ${profile.dayMaster}，命宫 ${profile.mingGong}`,
+          `四柱 ${profile.pillars.year.value} / ${profile.pillars.month.value} / ${profile.pillars.day.value} / ${profile.pillars.hour.value}`,
+          `日主 ${profile.dayMaster}`,
         ],
-        reasoning: "先确认四柱和日主，才能决定后续所有十神、五行和宫位判断的起点。如果这个起点不稳，后续解释都会漂移。",
-        conclusion: "因此先把四柱、日主、命宫固定为整轮推演的基础坐标。",
+        reasoning: "四柱先定，日主既立，后续十神、生克、旺衰才有依据。",
+        conclusion: "整轮判断以四柱原局为本，不以问题改盘。",
       },
       {
         phase: "tengod",
-        title: "十神关系依据",
-        evidence: [
-          `月柱十神侧重 ${profile.pillars.month.stemTenGod}`,
-          `日柱藏干 ${profile.pillars.day.hiddenStems.join(" / ")}`,
-        ],
-        reasoning: "十神用于把抽象五行转换为人事关系、压力来源和资源通道。这里优先看月柱和日柱，是因为它们最容易对应现实里的环境与自我。",
-        conclusion: "所以先用十神关系筛出真正影响问题判断的关系轴，而不是直接下结论。",
+        title: "月令与十神次序",
+        evidence: [`月柱 ${profile.pillars.month.value}`, `月干十神 ${profile.pillars.month.stemTenGod}`],
+        reasoning: "子平法先看月令，再察透干。月令主时气，十神主人事关系。",
+        conclusion: "先定月令强弱与十神主次，再谈现实应象。",
       },
       {
         phase: "balance",
-        title: "五行校准依据",
-        evidence: [profile.fiveElementSummary],
-        reasoning: "五行分布决定问题判断的偏向。主导五行说明惯性，偏弱五行说明短板，二者共同决定该补什么、该避开什么。",
-        conclusion: "结论不是简单看吉凶，而是先判断命盘内部是否失衡，以及现实行动应补哪里。",
+        title: "扶抑取向",
+        evidence: [`日主判断 ${strength}`, rootCount > 0 ? `通根 ${rootCount} 处` : "通根不显"],
+        reasoning: "古法讲旺衰扶抑，核心是得令、得地、得助，不是把五行数值直接转成吉凶。",
+        conclusion: `此局先按“${strength}”处理，再收束喜忌方向。`,
       },
       {
         phase: "dayun",
-        title: "大运窗口依据",
-        evidence: [
-          `起运时间 ${profile.luckStart}`,
-          `当前年龄 ${profile.currentAge}，首步参考大运 ${topLuck}`,
-        ],
-        reasoning: "原局给的是底色，大运给的是时间窗口。同样的命盘在不同阶段会触发不同主题，所以必须先把当前窗口定位清楚。",
-        conclusion: "因此本轮判断会优先看当前阶段的机会和压力，而不是只谈终身趋势。",
+        title: "原局与大运分层",
+        evidence: [`起运 ${profile.luckStart}`, `首步大运 ${topLuck}`],
+        reasoning: "原局是本，大运是时。同一命盘在不同时段，会触发不同主题。",
+        conclusion: "先用大运阶段做验盘，再谈未来趋向。",
       },
       {
         phase: "hexagram",
-        title: "卦象落点依据",
-        evidence: [`本卦 ${hexagram.name}`, `变卦 ${hexagram.changedName}`, hexagram.interpretation],
-        reasoning: "卦象不替代八字，而是补充当前问题的节奏和触发方向。它更适合回答“现在该怎么动”和“先动哪里”。",
-        conclusion: "所以卦象被拿来决定这次问题优先落在哪几个宫位，而不是单独断结果。",
-      },
-      {
-        phase: "connection",
-        title: "宫位连图依据",
-        evidence: [
-          "已选出当前被问题真正引动的宫位",
-          "已标出主连线与次连线，区分核心路径与辅助约束",
-        ],
-        reasoning: "单看一个宫位只能看到局部，连图才能看出因果路径，比如资源如何进入、关系如何牵制、行动从哪里落地。",
-        conclusion: "最终结论来自宫位之间的联动路径，而不是来自某个孤立宫位。",
+        title: "在线摇卦辅助",
+        evidence: [`本卦 ${hexagram.name}`, `变卦 ${hexagram.changedName}`],
+        reasoning: "在线摇卦只补充当前问题的节奏和切换点，不改写四柱原局。",
+        conclusion: "因此卦象只负责当下问题的进退节奏，不单独替代命盘判断。",
       },
       {
         phase: "report_draft",
-        title: "报告收束依据",
-        evidence: [
-          "已汇总四柱、十神、五行、大运、卦象、宫位连图",
-          "已把判断改写成可执行建议与可验证节点",
-        ],
-        reasoning: "报告不是简单复述盘面，而是把前面每一步的依据压缩成能读、能用、能回看验证的结论结构。",
-        conclusion: "因此最后的结论是由前面多个步骤叠加得出，而不是模型突然给出的单句判断。",
+        title: "报告收束",
+        evidence: ["已汇总四柱、月令、十神、扶抑、大运与问时卦", "已转写为可验证节点"],
+        reasoning: "最终报告不是散讲吉凶，而是把验证节点、结构判断和行动方向组织成可回看的结论。",
+        conclusion: "所以报告以验盘和可验证事件为重，而不是空泛断语。",
       },
     ],
-    fullReport: `# ${profile.subject.name}命理推演总报告
+    fullReport: `# ${profile.subject.name}四柱八字报告
 
-## 一、问题摘要
-你当前的提问是：${profile.subject.question}
-
-## 二、命盘概览
-- 日主：${profile.dayMaster}
+## 一、命盘原局
 - 四柱：${profile.pillars.year.value} / ${profile.pillars.month.value} / ${profile.pillars.day.value} / ${profile.pillars.hour.value}
+- 日主：${profile.dayMaster}
+- 月令：${profile.pillars.month.branch}
 - 命宫：${profile.mingGong}
 - 身宫：${profile.shenGong}
 - 太元：${profile.taiYuan}
 
-## 三、五行结构
-${profile.fiveElementSummary}
+## 二、判断次序
+以日元为主，以月令为提纲，次看通根、透干、十神、扶抑与大运，不以当前问题改动命盘。
 
-## 四、大运节律
-当前页面排出的首步参考大运为 ${topLuck}。建议优先回看相应年龄段是否出现身份、居住地、职业方向或关系结构上的转折，这能帮助判断后续问题的着力点。
+## 三、月令与旺衰
+日主判断：${strength}
+月令五行：${monthElement}
+${rootCount > 0 ? `地支通根 ${rootCount} 处，可作日主得地之证。` : "地支通根不显，需更加重视月令与透干。"}
 
-## 五、卦象补充
-本次卦象为 ${hexagram.name}，变卦为 ${hexagram.changedName}。${hexagram.interpretation}
+## 四、十神与扶抑
+十神主轴：${topTenGod}
+${useful.principle}
+喜：${useful.favorable}
+忌：${useful.unfavorable}
 
-## 六、行动建议
-1. 先把现实问题进一步收束到一个最具体的选择场景。
-2. 优先补足最弱五行象征的能力短板与环境短板。
-3. 把命盘用于校准节奏与偏性，而不是替代现实中的证据与决策。
+## 五、大运观察
+起运时间：${profile.luckStart}
+首步参考大运：${topLuck}
+建议先回看已走过的大运阶段是否与原局应象吻合，再决定后续流年细断是否成立。
 
-## 七、免责声明
-命理与卦象内容仅供传统文化体验与娱乐参考，不构成现实决策依据。`,
+## 六、在线摇卦辅助
+本卦：${hexagram.name}
+变卦：${hexagram.changedName}
+${hexagram.interpretation}
+
+## 七、可验证方向
+1. 回看大运切换前后是否有升学、搬迁、职业去留、家庭结构变化。
+2. 回看月令所主之事是否长期压过个人主观选择。
+3. 若与盘面长期不符，先复核出生时辰，再继续细断。
+
+## 八、提醒
+命理内容只可作传统术数研究与娱乐参考，不应替代现实决策。`,
   };
 }
 
 function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCard) {
   return `
-你是一位懂传统命理表达方式、但语气克制现代的中文分析助手。你正在为一个网页生成结构化算命结果。分析框架参考 bazi-skill：四柱八字、十神、五行平衡、大运走势、历史事件校准、综合建议；同时结合卦象给出当前问题的节奏判断。
+你是一名四柱八字研究助手。分析时请严格以子平法为主，优先遵循《渊海子平》《子平真诠》的判断顺序，并参考《滴天髓》《三命通会》《穷通宝典》《千里命稿》《神峰通考》作补充。不要混用六爻、紫微、星宗、心理测试式表达。
 
-角色卡：
-${roleCard ? JSON.stringify(roleCard, null, 2) : "未提供额外角色卡，按默认命理分析助手执行。"}
+你必须固定遵守以下顺序：
+1. 先定四柱与日主
+2. 以月令为提纲，先看旺衰
+3. 再看通根、透干、会合刑冲
+4. 再看十神配置
+5. 再看格局、扶抑、调候
+6. 最后结合大运、流年判断应期
 
-要求：
-1. 必须使用简体中文。
-2. 不要夸张恐吓，不要绝对化预言。
-3. 输出必须是 JSON，不要带 markdown 代码围栏。
-4. JSON 格式：
+大运规则提醒：
+- 阳年：甲丙戊庚壬
+- 阴年：乙丁己辛癸
+- 阳年男、阴年女顺排
+- 阴年男、阳年女逆排
+- 以月柱干支为基准排大运
+
+输出要求：
+1. 必须使用简体中文
+2. 不要恐吓，不要绝对化预言
+3. 若信息不足或古法上存在分歧，必须直接点明
+4. 必须给出可验证的已发生关键事件，用于用户校验
+5. 四柱为主体；在线模拟摇卦 ${hexagram.name} 只能作为当前问题的辅助节奏，不得改写四柱主判断
+6. 输出严格为 JSON，不要额外说明
+7. JSON 结构如下：
 {
   "summary": "120字以内总述",
   "sections": [
-    {"title":"日主与格局", "content":"..."},
-    {"title":"十神与关系", "content":"..."},
-    {"title":"五行与调候", "content":"..."},
-    {"title":"大运与近况", "content":"..."},
-    {"title":"卦象提示", "content":"..."}
+    {"title":"月令与日主", "content":"..."},
+    {"title":"十神与原局结构", "content":"..."},
+    {"title":"扶抑与喜忌", "content":"..."},
+    {"title":"大运与已发节点", "content":"..."},
+    {"title":"摇卦卦象", "content":"..."}
   ],
-  "keyMoments": ["...","...","..."],
-  "suggestions": ["...","...","..."],
+  "keyMoments": ["至少4条"],
+  "suggestions": ["3条具体建议"],
   "caution": "一句免责声明",
   "phaseExplanations": [
     {
       "phase":"chart",
-      "title":"这个阶段在看什么",
-      "evidence":["证据1","证据2"],
-      "reasoning":"用 2-4 句说明这一阶段是如何从盘面信号推进判断的，不要写成神秘口号。",
-      "conclusion":"这一阶段得到的阶段性结论"
+      "title":"...",
+      "evidence":["..."],
+      "reasoning":"...",
+      "conclusion":"..."
     }
   ],
-  "fullReport": "使用 markdown 输出一篇完整报告，包含标题和二级标题，至少覆盖问题摘要、命盘概览、五行结构、大运节律、宫位观察、卦象补充、行动建议、免责声明"
+  "fullReport": "markdown 完整报告"
 }
-5. sections 固定返回 5 段。
-6. keyMoments 返回 3 条已发生或可验证的历史节点预测，方便用户校准。
-7. suggestions 返回 3 条具体建议。
-8. phaseExplanations 至少返回 6 个阶段，优先覆盖 chart、tengod、balance、dayun、hexagram、connection、report_draft。
-9. 每个 phaseExplanations 必须写清楚：用了哪些证据、如何推、为什么这么收束，而不是空泛表态。
-10. 结合以下资料进行判断：
-   - 调候优先于空泛吉凶
-   - 先看日主、月令、五行流通，再看十神与大运
-   - 卦象用于补充“当前问题”的节奏，而不是替代四柱本体
+8. phaseExplanations 至少覆盖 chart、tengod、balance、dayun、hexagram、report_draft
+9. fullReport 至少覆盖命盘原局、判断次序、月令旺衰、十神扶抑、大运观察、在线摇卦辅助、可验证方向、提醒
+
+角色卡：
+${roleCard ? JSON.stringify(roleCard, null, 2) : "未提供额外角色卡。"}
 
 排盘资料：
 ${JSON.stringify(profile, null, 2)}
 
-卦象资料：
+在线摇卦资料：
 ${JSON.stringify(hexagram, null, 2)}
 `;
 }
@@ -204,9 +388,16 @@ ${JSON.stringify(hexagram, null, 2)}
 export async function createFortuneAnalysis(
   profile: BaziProfile,
   hexagram: Hexagram,
-  config: Config,
+  config?: Config | null,
   roleCard?: RoleCard,
 ): Promise<{ analysis: FortuneAnalysis; source: "llm" | "fallback" }> {
+  if (!config) {
+    return {
+      analysis: buildFallback(profile, hexagram),
+      source: "fallback",
+    };
+  }
+
   try {
     const response = await fetch(config.baseUrl, {
       method: "POST",
@@ -217,7 +408,7 @@ export async function createFortuneAnalysis(
       },
       body: JSON.stringify({
         model: config.model,
-        temperature: config.temperature ?? 0.8,
+        temperature: config.temperature ?? 0.4,
         messages: [
           {
             role: "system",
@@ -242,7 +433,6 @@ export async function createFortuneAnalysis(
       choices?: Array<{ message?: { content?: string } }>;
     };
     const content = data.choices?.[0]?.message?.content;
-
     if (!content) {
       throw new Error("上游模型未返回内容。");
     }
@@ -253,7 +443,7 @@ export async function createFortuneAnalysis(
     };
   } catch {
     return {
-      analysis: fallbackAnalysis(profile, hexagram),
+      analysis: buildFallback(profile, hexagram),
       source: "fallback",
     };
   }

@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "明命录",
-  description: "结合八字与卦象的高设计感命理网页，支持 OpenAI 兼容 API 配置。",
+  description: "以子平八字为主线的命理网页，侧重四柱、月令、十神与大运的结构化展示。",
 };
 
 export default function RootLayout({

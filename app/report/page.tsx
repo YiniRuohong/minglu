@@ -61,10 +61,12 @@ export default function ReportPage() {
               <p>命宫：{reportData.profile.mingGong}</p>
               <p>身宫：{reportData.profile.shenGong}</p>
               <p>四柱：{reportData.profile.pillars.year.value} / {reportData.profile.pillars.month.value} / {reportData.profile.pillars.day.value} / {reportData.profile.pillars.hour.value}</p>
+              <p>本卦：{reportData.hexagram.name}</p>
+              <p>变卦：{reportData.hexagram.changedName}</p>
             </section>
 
             <section className="report-side-card">
-              <h2>当前焦点宫位</h2>
+              <h2>当前判断摘要</h2>
               {reportData.board.highlights.map((item) => (
                 <p key={item}>{item}</p>
               ))}

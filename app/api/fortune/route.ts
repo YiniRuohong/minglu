@@ -99,7 +99,7 @@ export async function POST(request: Request) {
         send(
           assistantMessage(
             "intro-assistant",
-            `已收到 ${input.name} 的问题。我会先校验资料，再完成四柱排盘、五行校准、宫位联动，最后整理完整报告。`,
+            `已收到 ${input.name} 的问题。我会先校验资料，再按四柱、月令、十神、大运的次序排盘，同时自动在线模拟摇卦，最后整理成报告。`,
             "intake",
           ),
         );
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
         await wait(180);
 
         const profile = buildBaziProfile(input);
-        const hexagram = buildHexagram(input, profile.dayMaster);
+        const hexagram = buildHexagram(input, nowIso());
 
         send({
           type: "board",
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
         send(
           assistantMessage(
             "msg-chart",
-            `四柱已成盘，当前日主为 ${profile.dayMaster}，命宫 ${profile.mingGong}，起运时间 ${profile.luckStart}。正在进入五行与十神的权重校准。`,
+            `四柱已成盘，当前日主为 ${profile.dayMaster}，月柱 ${profile.pillars.month.value}，起运时间 ${profile.luckStart}。正在转入月令与十神次序判断。`,
             "chart",
           ),
         );
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
             "node-tengod",
             "tengod",
             "拆解十神关系",
-            `已根据 ${profile.dayMaster} 日主展开各柱十神与藏干关系，开始筛出对当前问题影响最大的关系轴。`,
+            `已根据 ${profile.dayMaster} 日主展开各柱十神与藏干关系，先看月令，再察透干与通根。`,
           ),
         });
         await wait(220);
@@ -179,8 +179,8 @@ export async function POST(request: Request) {
           node: buildNode(
             "node-balance",
             "balance",
-            "五行与十神校准",
-            profile.fiveElementSummary,
+            "扶抑取向判断",
+            "当前不再用问题驱动的权重校准，而是按旺衰扶抑、得令得地得助的顺序收束喜忌方向。",
           ),
         });
         await wait(220);
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
             "node-dayun",
             "dayun",
             "扫描大运窗口",
-            `已把起运 ${profile.luckStart} 与当前阶段对应的大运窗口并入判断，开始看近年外部机会与内部承压的交点。`,
+            `已将起运 ${profile.luckStart} 与首步大运并入判断，开始用大运验证原局。`,
           ),
         });
         await wait(220);
@@ -209,8 +209,8 @@ export async function POST(request: Request) {
           node: buildNode(
             "node-hexagram",
             "hexagram",
-            "定位卦象落点",
-            `已将本次 ${hexagram.name} / ${hexagram.changedName} 卦势落到宫位关系上，开始确认问题真正被引动的焦点。`,
+            "自动在线摇卦",
+            hexagram.interpretation,
           ),
         });
         await wait(220);
@@ -224,8 +224,8 @@ export async function POST(request: Request) {
           node: buildNode(
             "node-palace",
             "palace",
-            "建立宫位联动",
-            "已将四柱、五行倾向与问题意图映射为十二宫式推演面板，用于实时提示当前关注宫位。",
+            "收束古法摘要",
+            "已将四柱本体与在线摇卦摘要同步写入右侧面板，便于边看排盘边看当前问题的节奏变化。",
           ),
         });
         await wait(220);
@@ -239,27 +239,28 @@ export async function POST(request: Request) {
           node: buildNode(
             "node-connection",
             "connection",
-            "绘制宫位连图",
-            "已把当前真正启用的宫位与宫位之间的主连线、次连线标识出来，开始收束出可执行判断路径。",
+            "原局与大运合参",
+            "当前判断以原局为本、大运为时，先验证命盘主线，再决定对现实问题的落点。",
           ),
         });
         send(
           assistantMessage(
             "msg-palace",
-            "右侧总盘已切换到宫位连图视图。接下来开始收束报告框架。",
+            "右侧已同步四柱摘要与在线摇卦结果。接下来开始整理报告。",
             "connection",
           ),
         );
 
-        const unlocked = await isAccessUnlocked();
-        const config = unlocked
-          ? await readFortuneConfig()
-          : runtimeConfig
-            ? normalizeFortuneConfig(runtimeConfig)
-            : null;
-
-        if (!config) {
-          throw new Error("当前未解锁站点默认配置，请先输入访问密码，或保存你自己的 OpenAI 兼容模型配置。");
+        const unlocked = await isAccessUnlocked().catch(() => false);
+        let config = null;
+        try {
+          config = unlocked
+            ? await readFortuneConfig()
+            : runtimeConfig
+              ? normalizeFortuneConfig(runtimeConfig)
+              : null;
+        } catch {
+          config = null;
         }
 
         send({
@@ -272,16 +273,11 @@ export async function POST(request: Request) {
             "node-report-draft",
             "report_draft",
             "起草报告结构",
-            "已将问题摘要、命盘概览、五行结构、大运窗口、宫位联动和行动建议组织成报告草稿结构。",
+            "已将四柱原局、月令旺衰、十神层次、大运验证与在线摇卦辅助组织成报告草稿结构。",
           ),
         });
 
-        const { analysis, source } = await createFortuneAnalysis(
-          profile,
-          hexagram,
-          config,
-          input.roleCard,
-        );
+        const { analysis, source } = await createFortuneAnalysis(profile, hexagram, config, input.roleCard);
         const board = buildDivinationBoard(profile, hexagram, "report");
 
         const result: FortuneResponse = {
@@ -290,12 +286,12 @@ export async function POST(request: Request) {
           analysis,
           board,
           report: {
-            title: `${profile.subject.name} · 命理推演总报告`,
+            title: `${profile.subject.name} · 四柱与问时卦报告`,
             markdown: analysis.fullReport,
             generatedAt: nowIso(),
           },
           meta: {
-            model: config.model,
+            model: config?.model ?? "classic-local",
             source,
             configMode: unlocked ? "private" : "custom",
           },
@@ -323,7 +319,7 @@ export async function POST(request: Request) {
             "node-report",
             "report",
             "总报告生成完成",
-            `已基于 ${config.model} 汇总完整判断，并整理为可阅读的结构化报告。`,
+            `已按四柱主线与问时卦辅助收束成结构化报告${config ? `，并调用 ${config.model} 完成文案推断。` : "，当前使用本地兜底分析。"} `,
           ),
         });
         send(
