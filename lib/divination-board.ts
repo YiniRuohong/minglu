@@ -82,6 +82,40 @@ function buildPalaces(profile: BaziProfile): PalaceCell[] {
   }));
 }
 
+function buildConnections(activePalaces: string[], phase: PhaseId) {
+  const active = new Set(activePalaces);
+  const connections: DivinationBoard["connections"] = [];
+
+  if (phase === "chart" || phase === "tengod" || phase === "balance" || phase === "dayun" || active.has("月柱") || active.has("日柱")) {
+    connections.push({
+      from: "月柱",
+      to: "日柱",
+      label: "主轴",
+      emphasis: "primary",
+    });
+  }
+
+  if (phase === "calendar" || active.has("年柱")) {
+    connections.push({
+      from: "年柱",
+      to: "月柱",
+      label: "承上",
+      emphasis: "secondary",
+    });
+  }
+
+  if (phase === "connection" || phase === "report" || phase === "report_draft" || active.has("时柱")) {
+    connections.push({
+      from: "日柱",
+      to: "时柱",
+      label: "趋时",
+      emphasis: "secondary",
+    });
+  }
+
+  return connections;
+}
+
 function getDefaultHighlights(profile: BaziProfile, hexagram: Hexagram) {
   return [
     `月令：${profile.pillars.month.value}`,
@@ -129,6 +163,8 @@ export function buildDivinationBoard(
   hexagram: Hexagram,
   phase: PhaseId,
 ): DivinationBoard {
+  const activePalaces = ["月柱", "日柱"];
+
   return {
     phase,
     title: phaseTitleMap[phase],
@@ -140,8 +176,8 @@ export function buildDivinationBoard(
       `本卦 ${hexagram.name}`,
     ],
     highlights: getDefaultHighlights(profile, hexagram),
-    activePalaces: ["月柱", "日柱"],
-    connections: [],
+    activePalaces,
+    connections: buildConnections(activePalaces, phase),
     palaces: buildPalaces(profile),
     metrics: buildMetrics(profile, phase, hexagram),
     hexagramLines: hexagram.lines,
@@ -171,10 +207,13 @@ export function buildStreamingBoard(
     active.add("日柱");
   }
 
+  const activePalaces = [...active];
+
   return {
     ...baseBoard,
     highlights: nextHighlights.length > 0 ? nextHighlights : baseBoard.highlights,
-    activePalaces: [...active],
+    activePalaces,
+    connections: buildConnections(activePalaces, baseBoard.phase),
     palaces: baseBoard.palaces.map((palace) => ({
       ...palace,
       highlight: active.has(palace.name),

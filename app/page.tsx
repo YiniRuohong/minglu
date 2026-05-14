@@ -58,6 +58,21 @@ const defaultCustomConfig: ClientModelConfig = {
   temperature: 0.8,
 };
 
+const boardPositions = [
+  "top-left",
+  "top-right",
+  "bottom-right",
+  "bottom-left",
+];
+
+const boardCoords: Record<string, { x: number; y: number }> = {
+  年柱: { x: 18, y: 18 },
+  月柱: { x: 82, y: 18 },
+  日柱: { x: 82, y: 82 },
+  时柱: { x: 18, y: 82 },
+  中宫: { x: 50, y: 50 },
+};
+
 const idlePalaces: PalaceCell[] = [
   { name: "年柱", branch: "待定", ageBand: "祖上", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
   { name: "月柱", branch: "待定", ageBand: "提纲", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
@@ -172,13 +187,15 @@ function HexLine({ line }: { line: HexagramLine }) {
 
 function PalaceCard({
   palace,
+  position,
   activePhase,
 }: {
   palace: PalaceCell;
+  position: string;
   activePhase: string;
 }) {
   return (
-    <article className={`palace-card ${palace.highlight ? "active" : ""} phase-${activePhase}`}>
+    <article className={`palace-card ${position} ${palace.highlight ? "active" : ""} phase-${activePhase}`}>
       <div className="palace-head">
         <span>{palace.ageBand}</span>
         <em>{palace.branch}</em>
@@ -194,6 +211,37 @@ function PalaceCard({
         <span>{palace.score}</span>
       </div>
     </article>
+  );
+}
+
+function PalaceConnections({ board }: { board: DivinationBoard }) {
+  return (
+    <svg className="connection-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+      {board.connections.map((connection) => {
+        const from = boardCoords[connection.from];
+        const to = boardCoords[connection.to];
+        if (!from || !to) return null;
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+
+        return (
+          <g key={`${connection.from}-${connection.to}-${connection.label}`}>
+            <line
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              className={`connection-line ${connection.emphasis}`}
+            />
+            <circle cx={from.x} cy={from.y} r="0.9" className="connection-dot" />
+            <circle cx={to.x} cy={to.y} r="0.9" className="connection-dot" />
+            <text x={midX} y={midY} className={`connection-label ${connection.emphasis}`}>
+              {connection.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -911,19 +959,21 @@ export default function HomePage() {
             </p>
 
             <div className="palace-board compact">
-              <div className="pillar-grid">
-                {displayPalaces.map((palace) => (
+              <div className={`board-visual ${board ? "live" : "idle"} compact`}>
+                {board ? <PalaceConnections board={board} /> : null}
+                {displayPalaces.map((palace, index) => (
                   <PalaceCard
                     key={`${palace.name}-${palace.branch}`}
                     palace={palace}
+                    position={boardPositions[index] ?? "top-left"}
                     activePhase={board?.phase ?? "intake"}
                   />
                 ))}
-              </div>
-              <div className="board-center compact">
-                {displayCenterText.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
+                <div className="board-center compact">
+                  {displayCenterText.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
               </div>
               <article className="board-insight compact">
                 <h3>流式判断</h3>
