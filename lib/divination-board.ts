@@ -82,6 +82,16 @@ function buildPalaces(profile: BaziProfile): PalaceCell[] {
   }));
 }
 
+function getDefaultHighlights(profile: BaziProfile, hexagram: Hexagram) {
+  return [
+    `月令：${profile.pillars.month.value}`,
+    `日主：${profile.dayMaster}`,
+    `判断轴：${getDayMasterStrength(profile)}`,
+    `起运：${profile.luckStart}`,
+    `变卦：${hexagram.changedName}`,
+  ];
+}
+
 function buildMetrics(profile: BaziProfile, phase: PhaseId, hexagram: Hexagram): BoardMetric[] {
   const topLuck = profile.daYun[0]?.label ?? "待定";
 
@@ -129,17 +139,47 @@ export function buildDivinationBoard(
       `命宫 ${profile.mingGong} / 身宫 ${profile.shenGong}`,
       `本卦 ${hexagram.name}`,
     ],
-    highlights: [
-      `月令：${profile.pillars.month.value}`,
-      `日主：${profile.dayMaster}`,
-      `判断轴：${getDayMasterStrength(profile)}`,
-      `起运：${profile.luckStart}`,
-      `变卦：${hexagram.changedName}`,
-    ],
+    highlights: getDefaultHighlights(profile, hexagram),
     activePalaces: ["月柱", "日柱"],
     connections: [],
     palaces: buildPalaces(profile),
     metrics: buildMetrics(profile, phase, hexagram),
     hexagramLines: hexagram.lines,
+    insightDraft: "",
+  };
+}
+
+export function buildStreamingBoard(
+  baseBoard: DivinationBoard,
+  draft: string,
+  profile: BaziProfile,
+): DivinationBoard {
+  const compact = draft.replace(/\s+/g, " ").trim();
+  const nextHighlights = compact
+    .split(/[。！？\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const active = new Set<string>();
+  if (compact.includes("月令") || compact.includes(profile.pillars.month.value)) active.add("月柱");
+  if (compact.includes("日主") || compact.includes(profile.dayMaster)) active.add("日柱");
+  if (compact.includes("父母") || compact.includes("祖上") || compact.includes("早年")) active.add("年柱");
+  if (compact.includes("晚景") || compact.includes("子女") || compact.includes("归宿") || compact.includes("时柱")) active.add("时柱");
+  if (active.size === 0) {
+    active.add("月柱");
+    active.add("日柱");
+  }
+
+  return {
+    ...baseBoard,
+    highlights: nextHighlights.length > 0 ? nextHighlights : baseBoard.highlights,
+    activePalaces: [...active],
+    palaces: baseBoard.palaces.map((palace) => ({
+      ...palace,
+      highlight: active.has(palace.name),
+      marker: active.has(palace.name) ? "焦" : palace.marker,
+    })),
+    insightDraft: compact,
   };
 }

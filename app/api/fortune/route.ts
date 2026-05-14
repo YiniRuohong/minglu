@@ -1,9 +1,9 @@
 import { isAccessUnlocked } from "@/lib/access-control";
 import { buildBaziProfile } from "@/lib/bazi-data";
-import { buildDivinationBoard } from "@/lib/divination-board";
+import { buildDivinationBoard, buildStreamingBoard } from "@/lib/divination-board";
 import { normalizeFortuneConfig, readFortuneConfig } from "@/lib/fortune-config";
 import { buildHexagram } from "@/lib/hexagram";
-import { createFortuneAnalysis } from "@/lib/llm-analysis";
+import { createFortuneAnalysis, parseFortuneAnalysisText, streamFortuneDraft } from "@/lib/llm-analysis";
 import type {
   ConversationMessage,
   FortuneInput,
@@ -36,6 +36,23 @@ function assistantMessage(
 ): FortuneStreamEvent {
   return {
     type: "message",
+    message: {
+      id,
+      role: "assistant",
+      kind: "text",
+      content,
+      phase,
+    },
+  };
+}
+
+function assistantMessageDelta(
+  id: string,
+  content: string,
+  phase: ConversationMessage["phase"],
+): FortuneStreamEvent {
+  return {
+    type: "message_delta",
     message: {
       id,
       role: "assistant",
@@ -310,13 +327,66 @@ export async function POST(request: Request) {
           ),
         });
 
-        const { analysis, source, detail } = await createFortuneAnalysis(
+        const draftMessageId = "msg-analysis-draft";
+        let analysis;
+        let source: "llm" | "fallback" = "fallback";
+        let detail = "";
+        let streamed = false;
+
+        if (candidateConfigs.length > 0) {
+          send(
+            assistantMessage(
+              draftMessageId,
+              "模型正在展开解读...",
+              "report_draft",
+            ),
+          );
+
+          for (const candidateConfig of candidateConfigs) {
+            try {
+              const baseDraftBoard = buildDivinationBoard(profile, hexagram, "report_draft");
+              const streamedText = await streamFortuneDraft(
+                profile,
+                hexagram,
+                candidateConfig,
+                input.roleCard,
+                (draft) => {
+                  send(assistantMessageDelta(draftMessageId, draft, "report_draft"));
+                  send({
+                    type: "board",
+                    board: buildStreamingBoard(baseDraftBoard, draft, profile),
+                  });
+                },
+              );
+
+              analysis = parseFortuneAnalysisText(streamedText);
+              source = "llm";
+              detail = `已成功调用 ${candidateConfig.model} 并启用流式解读。`;
+              streamed = true;
+              break;
+            } catch (error) {
+              detail = `${detail}${detail ? " | " : ""}${error instanceof Error ? error.message : `模型 ${candidateConfig.model} 流式调用失败。`}`;
+            }
+          }
+        }
+
+        if (!analysis) {
+          const fallbackResult = await createFortuneAnalysis(
+            profile,
+            hexagram,
+            candidateConfigs,
+            input.roleCard,
+          );
+          analysis = fallbackResult.analysis;
+          source = fallbackResult.source;
+          detail = [detail, fallbackResult.detail].filter(Boolean).join(" | ");
+        }
+
+        const board = buildStreamingBoard(
+          buildDivinationBoard(profile, hexagram, "report"),
+          analysis.summary,
           profile,
-          hexagram,
-          candidateConfigs,
-          input.roleCard,
         );
-        const board = buildDivinationBoard(profile, hexagram, "report");
 
         const result: FortuneResponse = {
           profile,
@@ -359,7 +429,7 @@ export async function POST(request: Request) {
             "report",
             source === "llm" ? "模型深度解读已接入" : "回退到本地兜底",
             source === "llm"
-              ? `本次已调用 ${config?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。${[configDetail, detail].filter(Boolean).join(" ")}`
+              ? `本次已调用 ${candidateConfigs[0]?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。${[configDetail, detail].filter(Boolean).join(" ")}`
               : `本次未成功调用模型，当前展示的是本地规则兜底分析。${[configDetail, detail].filter(Boolean).join(" ")}`,
           ),
         });
@@ -373,11 +443,17 @@ export async function POST(request: Request) {
           ),
         });
         send(
-          assistantMessage(
-            "msg-report",
-            `推演完成。${source === "llm" ? "本次已接入大模型深度解读。" : "本次未接入模型，使用本地兜底分析。"} 结论摘要：${analysis.summary}`,
-            "report",
-          ),
+          source === "llm" && streamed
+            ? assistantMessageDelta(
+                draftMessageId,
+                `推演完成。${analysis.summary}`,
+                "report",
+              )
+            : assistantMessage(
+                "msg-report",
+                `推演完成。${source === "llm" ? "本次已接入大模型深度解读。" : "本次未接入模型，使用本地兜底分析。"} 结论摘要：${analysis.summary}`,
+                "report",
+              ),
         );
         send({
           type: "result",

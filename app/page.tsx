@@ -58,36 +58,6 @@ const defaultCustomConfig: ClientModelConfig = {
   temperature: 0.8,
 };
 
-const boardPositions = [
-  "top-left",
-  "top-2",
-  "top-3",
-  "top-right",
-  "right-2",
-  "right-3",
-  "bottom-right",
-  "bottom-3",
-  "bottom-2",
-  "bottom-left",
-  "left-3",
-  "left-2",
-];
-
-const boardCoords: Record<string, { x: number; y: number }> = {
-  命宫: { x: 12.5, y: 12.5 },
-  兄弟: { x: 37.5, y: 12.5 },
-  夫妻: { x: 62.5, y: 12.5 },
-  子女: { x: 87.5, y: 12.5 },
-  父母: { x: 12.5, y: 37.5 },
-  财帛: { x: 87.5, y: 37.5 },
-  福德: { x: 12.5, y: 62.5 },
-  疾厄: { x: 87.5, y: 62.5 },
-  田宅: { x: 12.5, y: 87.5 },
-  官禄: { x: 37.5, y: 87.5 },
-  交友: { x: 62.5, y: 87.5 },
-  迁移: { x: 87.5, y: 87.5 },
-};
-
 function loadStoredForm() {
   try {
     if (typeof window === "undefined") {
@@ -195,15 +165,13 @@ function HexLine({ line }: { line: HexagramLine }) {
 
 function PalaceCard({
   palace,
-  position,
   activePhase,
 }: {
   palace: PalaceCell;
-  position: string;
   activePhase: string;
 }) {
   return (
-    <article className={`palace-card ${position} ${palace.highlight ? "active" : ""} phase-${activePhase}`}>
+    <article className={`palace-card ${palace.highlight ? "active" : ""} phase-${activePhase}`}>
       <div className="palace-head">
         <span>{palace.ageBand}</span>
         <em>{palace.branch}</em>
@@ -228,36 +196,6 @@ function MetricCard({ metric }: { metric: BoardMetric }) {
       <span>{metric.label}</span>
       <strong>{metric.value}</strong>
     </article>
-  );
-}
-
-function PalaceConnections({ board }: { board: DivinationBoard }) {
-  return (
-    <svg className="connection-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-      {board.connections.map((connection) => {
-        const from = boardCoords[connection.from];
-        const to = boardCoords[connection.to];
-        if (!from || !to) return null;
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
-        return (
-          <g key={`${connection.from}-${connection.to}-${connection.label}`}>
-            <line
-              x1={from.x}
-              y1={from.y}
-              x2={to.x}
-              y2={to.y}
-              className={`connection-line ${connection.emphasis}`}
-            />
-            <circle cx={from.x} cy={from.y} r="0.85" className="connection-dot" />
-            <circle cx={to.x} cy={to.y} r="0.85" className="connection-dot" />
-            <text x={midX} y={midY} className={`connection-label ${connection.emphasis}`}>
-              {connection.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
   );
 }
 
@@ -738,9 +676,9 @@ export default function HomePage() {
 
           const event = JSON.parse(line) as FortuneStreamEvent;
 
-          if (event.type === "message") {
+          if (event.type === "message" || event.type === "message_delta") {
             const compactMessage =
-              event.message.role === "assistant"
+              event.type === "message" && event.message.role === "assistant"
                 ? {
                     ...event.message,
                     content:
@@ -753,7 +691,15 @@ export default function HomePage() {
                             : event.message.content,
                   }
                 : event.message;
-            setMessages((prev) => [...prev, compactMessage]);
+            setMessages((prev) => {
+              const index = prev.findIndex((item) => item.id === compactMessage.id);
+              if (index === -1) {
+                return [...prev, compactMessage];
+              }
+              const next = [...prev];
+              next[index] = compactMessage;
+              return next;
+            });
             if (compactMessage.role === "assistant") {
               setAnimatedMessageId(compactMessage.id);
             }
@@ -954,20 +900,24 @@ export default function HomePage() {
             </p>
 
             <div className="palace-board compact">
-              {board ? <PalaceConnections board={board} /> : null}
-              {board?.palaces.map((palace, index) => (
-                <PalaceCard
-                  key={`${palace.name}-${palace.branch}`}
-                  palace={palace}
-                  position={boardPositions[index]}
-                  activePhase={board.phase}
-                />
-              ))}
+              <div className="pillar-grid">
+                {board?.palaces.map((palace) => (
+                  <PalaceCard
+                    key={`${palace.name}-${palace.branch}`}
+                    palace={palace}
+                    activePhase={board.phase}
+                  />
+                ))}
+              </div>
               <div className="board-center compact">
                 {(board?.centerText ?? ["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"]).map((line) => (
                   <p key={line}>{line}</p>
                 ))}
               </div>
+              <article className="board-insight compact">
+                <h3>流式判断</h3>
+                <p>{board?.insightDraft || "模型开始输出后，这里会实时显示正在成形的判断摘要。"}</p>
+              </article>
             </div>
 
             <div className="metric-grid compact">

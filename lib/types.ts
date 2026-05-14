@@ -193,6 +193,7 @@ export type DivinationBoard = {
   palaces: PalaceCell[];
   metrics: BoardMetric[];
   hexagramLines: HexagramLine[];
+  insightDraft?: string;
 };
 
 export type ReportDocument = {
@@ -217,6 +218,7 @@ export type FortuneResponse = {
 
 export type FortuneStreamEvent =
   | { type: "message"; message: ConversationMessage }
+  | { type: "message_delta"; message: ConversationMessage }
   | { type: "node"; node: ReasoningNode }
   | { type: "board"; board: DivinationBoard }
   | { type: "result"; result: FortuneResponse }

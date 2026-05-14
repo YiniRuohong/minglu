@@ -68,6 +68,10 @@ function extractJson(text: string) {
   return JSON.parse(candidate) as FortuneAnalysis;
 }
 
+export function parseFortuneAnalysisText(text: string) {
+  return extractJson(text);
+}
+
 function trimErrorBody(text: string) {
   const compact = text.replace(/\s+/g, " ").trim();
   return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
@@ -414,6 +418,30 @@ ${JSON.stringify(anchors, null, 2)}
 `;
 }
 
+function buildRequestBody(
+  profile: BaziProfile,
+  hexagram: Hexagram,
+  config: Config,
+  roleCard?: RoleCard,
+) {
+  return {
+    model: config.model,
+    temperature: config.temperature ?? 0.7,
+    messages: [
+      {
+        role: "system",
+        content: roleCard?.systemPrompt
+          ? `${roleCard.systemPrompt}\n\n你输出严格 JSON，不要输出额外说明。`
+          : "你输出严格 JSON，不要输出额外说明。",
+      },
+      {
+        role: "user",
+        content: buildPrompt(profile, hexagram, roleCard),
+      },
+    ],
+  };
+}
+
 async function callModelAnalysis(
   profile: BaziProfile,
   hexagram: Hexagram,
@@ -431,22 +459,7 @@ async function callModelAnalysis(
           Authorization: `Bearer ${config.apiKey}`,
           ...config.headers,
         },
-        body: JSON.stringify({
-          model: config.model,
-          temperature: config.temperature ?? 0.7,
-          messages: [
-            {
-              role: "system",
-              content: roleCard?.systemPrompt
-                ? `${roleCard.systemPrompt}\n\n你输出严格 JSON，不要输出额外说明。`
-                : "你输出严格 JSON，不要输出额外说明。",
-            },
-            {
-              role: "user",
-              content: buildPrompt(profile, hexagram, roleCard),
-            },
-          ],
-        }),
+        body: JSON.stringify(buildRequestBody(profile, hexagram, config, roleCard)),
         cache: "no-store",
       });
 
@@ -482,6 +495,73 @@ async function callModelAnalysis(
   }
 
   throw new Error(lastError || `模型 ${config.model} 调用失败。`);
+}
+
+export async function streamFortuneDraft(
+  profile: BaziProfile,
+  hexagram: Hexagram,
+  config: Config,
+  roleCard: RoleCard | undefined,
+  onDelta: (text: string) => void,
+) {
+  const response = await fetch(config.baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+      ...config.headers,
+    },
+    body: JSON.stringify({
+      ...buildRequestBody(profile, hexagram, config, roleCard),
+      stream: true,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok || !response.body) {
+    const body = trimErrorBody(await response.text().catch(() => ""));
+    throw new Error(`模型 ${config.model} 流式请求失败: ${response.status}${body ? ` ${body}` : ""}`);
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  let accumulated = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+
+    for (const chunk of chunks) {
+      const lines = chunk
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+
+      for (const line of lines) {
+        if (!line || line === "[DONE]") continue;
+        try {
+          const data = JSON.parse(line) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const text = data.choices?.[0]?.delta?.content;
+          if (text) {
+            accumulated += text;
+            onDelta(accumulated);
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  }
+
+  return accumulated;
 }
 
 export async function createFortuneAnalysis(
