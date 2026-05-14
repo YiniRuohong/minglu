@@ -575,10 +575,10 @@ button {
   box-shadow: inset 0 0 0 1px rgba(191, 150, 85, 0.32);
 }
 
-.palace-card.top-left { grid-area: 1 / 1; }
-.palace-card.top-right { grid-area: 1 / 3; }
-.palace-card.bottom-right { grid-area: 3 / 3; }
-.palace-card.bottom-left { grid-area: 3 / 1; }
+.palace-card.top-center { grid-area: 1 / 2; }
+.palace-card.right-center { grid-area: 2 / 3; }
+.palace-card.bottom-center { grid-area: 3 / 2; }
+.palace-card.left-center { grid-area: 2 / 1; }
 
 .palace-head,
 .palace-foot {
@@ -1118,10 +1118,10 @@ button {
     display: none;
   }
 
-  .palace-card.top-left,
-  .palace-card.top-right,
-  .palace-card.bottom-right,
-  .palace-card.bottom-left {
+  .palace-card.top-center,
+  .palace-card.right-center,
+  .palace-card.bottom-center,
+  .palace-card.left-center {
     grid-area: auto;
   }
 

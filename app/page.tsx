@@ -59,17 +59,17 @@ const defaultCustomConfig: ClientModelConfig = {
 };
 
 const boardPositions = [
-  "top-left",
-  "top-right",
-  "bottom-right",
-  "bottom-left",
+  "top-center",
+  "right-center",
+  "bottom-center",
+  "left-center",
 ];
 
 const boardCoords: Record<string, { x: number; y: number }> = {
-  年柱: { x: 18, y: 18 },
-  月柱: { x: 82, y: 18 },
-  日柱: { x: 82, y: 82 },
-  时柱: { x: 18, y: 82 },
+  年柱: { x: 50, y: 16 },
+  月柱: { x: 84, y: 50 },
+  日柱: { x: 50, y: 84 },
+  时柱: { x: 16, y: 50 },
   中宫: { x: 50, y: 50 },
 };
 
@@ -965,7 +965,7 @@ export default function HomePage() {
                   <PalaceCard
                     key={`${palace.name}-${palace.branch}`}
                     palace={palace}
-                    position={boardPositions[index] ?? "top-left"}
+                    position={boardPositions[index] ?? "top-center"}
                     activePhase={board?.phase ?? "intake"}
                   />
                 ))}
