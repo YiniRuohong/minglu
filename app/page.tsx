@@ -58,6 +58,13 @@ const defaultCustomConfig: ClientModelConfig = {
   temperature: 0.8,
 };
 
+const idlePalaces: PalaceCell[] = [
+  { name: "年柱", branch: "待定", ageBand: "祖上", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
+  { name: "月柱", branch: "待定", ageBand: "提纲", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
+  { name: "日柱", branch: "待定", ageBand: "命主", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
+  { name: "时柱", branch: "待定", ageBand: "归宿", stars: ["未起盘", "待录入"], score: 0, marker: "待", highlight: false },
+];
+
 function loadStoredForm() {
   try {
     if (typeof window === "undefined") {
@@ -562,6 +569,10 @@ export default function HomePage() {
     }
     return parts.join(" · ");
   }, [form]);
+  const displayPalaces = board?.palaces?.length ? board.palaces : idlePalaces;
+  const displayCenterText = board?.centerText?.length
+    ? board.centerText
+    : ["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"];
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodeIds((prev) =>
@@ -899,40 +910,26 @@ export default function HomePage() {
               {board?.subtitle ?? "右侧会显示四柱摘要、起运与当前在线摇卦结果。"}
             </p>
 
-            {board?.palaces?.length ? (
-              <div className="palace-board compact">
-                <div className="pillar-grid">
-                  {board.palaces.map((palace) => (
-                    <PalaceCard
-                      key={`${palace.name}-${palace.branch}`}
-                      palace={palace}
-                      activePhase={board.phase}
-                    />
-                  ))}
-                </div>
-                <div className="board-center compact">
-                  {board.centerText.map((line) => (
-                    <p key={line}>{line}</p>
-                  ))}
-                </div>
-                <article className="board-insight compact">
-                  <h3>流式判断</h3>
-                  <p>{board.insightDraft || "模型开始输出后，这里会实时显示正在成形的判断摘要。"}</p>
-                </article>
+            <div className="palace-board compact">
+              <div className="pillar-grid">
+                {displayPalaces.map((palace) => (
+                  <PalaceCard
+                    key={`${palace.name}-${palace.branch}`}
+                    palace={palace}
+                    activePhase={board?.phase ?? "intake"}
+                  />
+                ))}
               </div>
-            ) : (
-              <div className="palace-board palace-board-empty compact">
-                <div className="board-center compact">
-                  {["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"].map((line) => (
-                    <p key={line}>{line}</p>
-                  ))}
-                </div>
-                <article className="board-insight compact">
-                  <h3>流式判断</h3>
-                  <p>模型开始输出后，这里会实时显示正在成形的判断摘要。</p>
-                </article>
+              <div className="board-center compact">
+                {displayCenterText.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
               </div>
-            )}
+              <article className="board-insight compact">
+                <h3>流式判断</h3>
+                <p>{board?.insightDraft || "模型开始输出后，这里会实时显示正在成形的判断摘要。"}</p>
+              </article>
+            </div>
 
             <div className="metric-grid compact">
               {(board?.metrics ?? []).map((metric) => (
