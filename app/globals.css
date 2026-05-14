@@ -496,11 +496,19 @@ button {
 
 .board-visual {
   position: relative;
-  display: block;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    ". top ."
+    "left center right"
+    ". bottom .";
   background: rgba(111, 93, 69, 0.11);
-  width: min(100%, 360px);
-  height: 280px;
+  width: min(100%, 420px);
+  aspect-ratio: 1;
   margin: 0 auto;
+  gap: 1px;
+  padding: 1px;
   overflow: hidden;
 }
 
@@ -559,10 +567,10 @@ button {
 }
 
 .palace-card {
-  position: absolute;
+  position: relative;
   z-index: 1;
-  width: 118px;
-  min-height: 86px;
+  width: auto;
+  min-height: 0;
   padding: 8px;
   display: grid;
   gap: 5px;
@@ -576,27 +584,19 @@ button {
 }
 
 .palace-card.top-center {
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  grid-area: top;
 }
 
 .palace-card.right-center {
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
+  grid-area: right;
 }
 
 .palace-card.bottom-center {
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  grid-area: bottom;
 }
 
 .palace-card.left-center {
-  top: 50%;
-  left: 8px;
-  transform: translateY(-50%);
+  grid-area: left;
 }
 
 .palace-head,
@@ -628,16 +628,11 @@ button {
 }
 
 .board-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 116px;
-  min-height: 116px;
-  transform: translate(-50%, -50%);
+  grid-area: center;
   z-index: 1;
   display: grid;
   place-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
   text-align: center;
 }
 
@@ -653,7 +648,7 @@ button {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .board-insight {
@@ -1132,12 +1127,17 @@ button {
   }
 
   .board-visual {
-    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "top right"
+      "center center"
+      "left bottom";
+    aspect-ratio: auto;
     min-height: 0;
     gap: 8px;
     background: transparent;
+    padding: 0;
   }
 
   .connection-overlay {
@@ -1149,19 +1149,12 @@ button {
   .palace-card.bottom-center,
   .palace-card.left-center {
     position: relative;
-    inset: auto;
     width: auto;
     min-height: 0;
-    transform: none;
   }
 
   .board-center {
-    position: relative;
-    top: auto;
-    left: auto;
-    width: auto;
     min-height: 180px;
-    transform: none;
   }
 
   .palace-card,
