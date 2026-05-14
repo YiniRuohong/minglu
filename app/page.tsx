@@ -899,26 +899,40 @@ export default function HomePage() {
               {board?.subtitle ?? "右侧会显示四柱摘要、起运与当前在线摇卦结果。"}
             </p>
 
-            <div className="palace-board compact">
-              <div className="pillar-grid">
-                {board?.palaces.map((palace) => (
-                  <PalaceCard
-                    key={`${palace.name}-${palace.branch}`}
-                    palace={palace}
-                    activePhase={board.phase}
-                  />
-                ))}
+            {board?.palaces?.length ? (
+              <div className="palace-board compact">
+                <div className="pillar-grid">
+                  {board.palaces.map((palace) => (
+                    <PalaceCard
+                      key={`${palace.name}-${palace.branch}`}
+                      palace={palace}
+                      activePhase={board.phase}
+                    />
+                  ))}
+                </div>
+                <div className="board-center compact">
+                  {board.centerText.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+                <article className="board-insight compact">
+                  <h3>流式判断</h3>
+                  <p>{board.insightDraft || "模型开始输出后，这里会实时显示正在成形的判断摘要。"}</p>
+                </article>
               </div>
-              <div className="board-center compact">
-                {(board?.centerText ?? ["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"]).map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
+            ) : (
+              <div className="palace-board palace-board-empty compact">
+                <div className="board-center compact">
+                  {["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"].map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+                <article className="board-insight compact">
+                  <h3>流式判断</h3>
+                  <p>模型开始输出后，这里会实时显示正在成形的判断摘要。</p>
+                </article>
               </div>
-              <article className="board-insight compact">
-                <h3>流式判断</h3>
-                <p>{board?.insightDraft || "模型开始输出后，这里会实时显示正在成形的判断摘要。"}</p>
-              </article>
-            </div>
+            )}
 
             <div className="metric-grid compact">
               {(board?.metrics ?? []).map((metric) => (

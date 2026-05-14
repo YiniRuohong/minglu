@@ -488,6 +488,11 @@ button {
   min-height: 0;
 }
 
+.palace-board-empty {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
 .palace-card,
 .board-center,
 .board-insight {
@@ -582,6 +587,20 @@ button {
   color: var(--muted);
   line-height: 1.8;
   white-space: pre-wrap;
+}
+
+.palace-board-empty .board-center,
+.palace-board-empty .board-insight {
+  min-height: 260px;
+}
+
+.palace-board-empty .board-center {
+  padding-inline: 22px;
+}
+
+.palace-board-empty .board-insight {
+  display: grid;
+  align-content: center;
 }
 
 .metric-grid {
@@ -1039,6 +1058,10 @@ button {
   .palace-board {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .palace-board-empty {
+    grid-template-columns: 1fr;
   }
 
   .pillar-grid {
