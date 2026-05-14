@@ -497,14 +497,15 @@ button {
 .board-visual {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   grid-template-areas:
-    ". top ."
-    "left center right"
-    ". bottom .";
+    ". top top ."
+    "left center center right"
+    "left center center right"
+    ". bottom bottom .";
   background: rgba(111, 93, 69, 0.11);
-  width: min(100%, 420px);
+  width: min(100%, 430px);
   aspect-ratio: 1;
   margin: 0 auto;
   gap: 1px;
@@ -571,6 +572,8 @@ button {
   z-index: 1;
   width: auto;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   padding: 8px;
   display: grid;
   gap: 5px;
@@ -606,6 +609,7 @@ button {
   gap: 8px;
   color: var(--muted);
   font-size: 10px;
+  min-width: 0;
 }
 
 .palace-card h4 {
@@ -629,10 +633,15 @@ button {
 
 .board-center {
   grid-area: center;
+  position: relative;
   z-index: 1;
   display: grid;
-  place-items: center;
-  padding: 12px 14px;
+  align-content: center;
+  justify-items: center;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 14px 16px;
   text-align: center;
 }
 
@@ -647,8 +656,18 @@ button {
 .board-center p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.board-center p + p {
+  margin-top: 6px;
+}
+
+.board-center p:nth-child(n+4) {
+  display: none;
 }
 
 .board-insight {
