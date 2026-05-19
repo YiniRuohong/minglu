@@ -576,9 +576,23 @@ button {
   overflow: hidden;
   padding: 8px;
   display: grid;
-  gap: 5px;
+  gap: 6px;
   align-content: start;
   transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.board-visual.ring12 .palace-card {
+  padding: 6px;
+  gap: 4px;
+}
+
+.board-visual.ring12 .palace-card h4 {
+  font-size: 14px;
+}
+
+.board-visual.ring12 .palace-stars span {
+  font-size: 9px;
+  padding: 2px 4px;
 }
 
 .palace-card.active {
@@ -614,21 +628,54 @@ button {
 
 .palace-card h4 {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
 }
 
-.palace-stars {
+.palace-stars,
+.pillar-tags {
   display: flex;
   gap: 5px;
   flex-wrap: wrap;
 }
 
-.palace-stars span {
+.palace-stars span,
+.pillar-tags span {
   padding: 3px 5px;
   border: 1px solid rgba(191, 150, 85, 0.18);
   font-size: 10px;
   color: var(--accent);
+}
+
+.pillar-detail {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pillar-main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 32px));
+  gap: 6px;
+}
+
+.pillar-main strong {
+  display: grid;
+  place-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(191, 150, 85, 0.2);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pillar-detail p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .board-center {

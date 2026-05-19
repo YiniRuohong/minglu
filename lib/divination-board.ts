@@ -2,9 +2,11 @@ import type {
   BaziProfile,
   BoardMetric,
   DivinationBoard,
+  DivinationSystem,
   Hexagram,
   PalaceCell,
   PhaseId,
+  ZiweiProfile,
 } from "@/lib/types";
 
 const phaseTitleMap: Record<PhaseId, string> = {
@@ -73,12 +75,22 @@ function buildPalaces(profile: BaziProfile): PalaceCell[] {
 
   return pillars.map(({ name, pillar, ageBand, highlight }) => ({
     name,
-    branch: pillar.branch,
+    branch: pillar.value,
     ageBand,
-    stars: [pillar.value, pillar.stemTenGod || pillar.wuxing, ...pillar.hiddenStems.slice(0, 2)],
+    stars: [pillar.stemTenGod || "日主", ...pillar.branchTenGods.slice(0, 2)].filter(Boolean),
     score: 75,
     marker: highlight ? "纲" : "参",
     highlight,
+    pillarDetail: {
+      stem: pillar.stem,
+      stemTenGod: pillar.stemTenGod || (name === "日柱" ? "日主" : ""),
+      branch: pillar.branch,
+      hiddenStems: pillar.hiddenStems,
+      branchTenGods: pillar.branchTenGods,
+      wuxing: pillar.wuxing,
+      naYin: pillar.naYin,
+      diShi: pillar.diShi,
+    },
   }));
 }
 
@@ -126,6 +138,22 @@ function getDefaultHighlights(profile: BaziProfile, hexagram: Hexagram) {
   ];
 }
 
+function formatVisibleDraft(draft: string) {
+  const compact = draft
+    .replace(/```json|```/gi, "")
+    .replace(/\\n/g, "\n")
+    .replace(/["{}[\]]/g, "")
+    .replace(
+      /\b(summary|title|content|keyMoments|suggestions|caution|fullReport|sections|phaseExplanations|phase|evidence|reasoning|conclusion)\s*:/g,
+      "",
+    )
+    .replace(/,+/g, "，")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return compact.length > 900 ? `${compact.slice(0, 900)}...` : compact;
+}
+
 function buildMetrics(profile: BaziProfile, phase: PhaseId, hexagram: Hexagram): BoardMetric[] {
   const topLuck = profile.daYun[0]?.label ?? "待定";
 
@@ -162,10 +190,93 @@ export function buildDivinationBoard(
   profile: BaziProfile,
   hexagram: Hexagram,
   phase: PhaseId,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
 ): DivinationBoard {
+  if (system !== "bazi" && ziweiProfile) {
+    const highlights = [
+      `命宫：${ziweiProfile.mingGong}(${ziweiProfile.mingGongBranch})`,
+      `身宫：${ziweiProfile.shenGong}(${ziweiProfile.shenGongBranch})`,
+      `五行局：${ziweiProfile.wuxingJuName}`,
+      `紫微落宫：${ziweiProfile.ziweiStarPalace}`,
+      `大限：${ziweiProfile.currentDaXian?.ageRange ?? "未定"} ${ziweiProfile.currentDaXian?.palaceName ?? ""}`.trim(),
+    ];
+
+    return {
+      layout: "ring12",
+      phase,
+      title: `${phaseTitleMap[phase]} · 紫微盘`,
+      subtitle: `${ziweiProfile.subject.name} · ${ziweiProfile.mingGong}命宫 · ${ziweiProfile.wuxingJuName}`,
+      pulse: phasePulseMap[phase],
+      centerText: [
+        `命宫 ${ziweiProfile.mingGong} / 身宫 ${ziweiProfile.shenGong}`,
+        `紫微在 ${ziweiProfile.ziweiStarPalace}`,
+        `本卦 ${hexagram.name}`,
+      ],
+      highlights,
+      activePalaces: ["命宫", "财帛宫", "官禄宫", "迁移宫"],
+      connections: [],
+      palaces: ziweiProfile.palaces.map((palace) => ({
+        name: palace.name,
+        branch: `${palace.stem}${palace.branch}`,
+        ageBand: palace.daXianAge ? `${palace.daXianAge[0]}-${palace.daXianAge[1]}岁` : "宫位",
+        stars:
+          palace.majorStars.length > 0
+            ? palace.majorStars.slice(0, 4)
+            : [palace.borrowedFromName ? `借${palace.borrowedFromName}` : "空宫"],
+        score:
+          palace.majorStars.length * 15 +
+          palace.stars.filter((star) => star.type === "lucky").length * 6 -
+          palace.stars.filter((star) => star.type === "sha").length * 4,
+        marker: palace.isMingGong ? "命" : palace.isShenGong ? "身" : palace.isCurrentDaXian ? "限" : "宫",
+        highlight:
+          palace.isMingGong ||
+          palace.isShenGong ||
+          palace.name === "财帛宫" ||
+          palace.name === "官禄宫" ||
+          palace.name === "迁移宫",
+        slot: `ring-${palace.branch}`,
+      })),
+      metrics: [
+        {
+          label: "命宫",
+          value: ziweiProfile.mingGong,
+          tone: "neutral",
+        },
+        {
+          label: "身宫",
+          value: ziweiProfile.shenGong,
+          tone: "neutral",
+        },
+        {
+          label: "五行局",
+          value: ziweiProfile.wuxingJuName,
+          tone: "earth",
+        },
+        {
+          label: "紫微",
+          value: ziweiProfile.ziweiStarPalace,
+          tone: "neutral",
+        },
+        {
+          label: "问时卦",
+          value: hexagram.name.replace(/（.*$/, ""),
+          tone: "neutral",
+        },
+      ],
+      hexagramLines: hexagram.lines,
+      insightDraft:
+        ziweiProfile.patterns
+          .slice(0, 3)
+          .map((pattern) => `${pattern.name}：${pattern.description}`)
+          .join("\n") || "",
+    };
+  }
+
   const activePalaces = ["月柱", "日柱"];
 
   return {
+    layout: "cross4",
     phase,
     title: phaseTitleMap[phase],
     subtitle: `${profile.subject.name} · ${profile.dayMaster}日主 · ${profile.pillars.month.value}月令`,
@@ -190,7 +301,22 @@ export function buildStreamingBoard(
   draft: string,
   profile: BaziProfile,
 ): DivinationBoard {
-  const compact = draft.replace(/\s+/g, " ").trim();
+  if (baseBoard.layout === "ring12") {
+    const compact = formatVisibleDraft(draft);
+    const nextHighlights = compact
+      .split(/[。！？\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+
+    return {
+      ...baseBoard,
+      highlights: nextHighlights.length > 0 ? nextHighlights : baseBoard.highlights,
+      insightDraft: compact,
+    };
+  }
+
+  const compact = formatVisibleDraft(draft);
   const nextHighlights = compact
     .split(/[。！？\n]/)
     .map((item) => item.trim())

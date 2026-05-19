@@ -44,6 +44,7 @@ export default function ReportPage() {
           </div>
           <div className="report-meta-stack">
             <span>{reportData.meta.model}</span>
+            <span>{reportData.meta.system === "bazi" ? "四柱八字" : reportData.meta.system === "ziwei" ? "紫微斗数" : "紫微主盘综合"}</span>
             <span>{reportData.meta.source === "llm" ? "LLM 深度解读" : "本地规则兜底"}</span>
             <span>{reportData.profile.subject.solarText}</span>
             <span>{reportData.profile.subject.birthPlace}</span>
@@ -58,10 +59,21 @@ export default function ReportPage() {
           <aside className="report-page-side">
             <section className="report-side-card">
               <h2>命盘摘要</h2>
-              <p>日主：{reportData.profile.dayMaster}</p>
-              <p>命宫：{reportData.profile.mingGong}</p>
-              <p>身宫：{reportData.profile.shenGong}</p>
-              <p>四柱：{reportData.profile.pillars.year.value} / {reportData.profile.pillars.month.value} / {reportData.profile.pillars.day.value} / {reportData.profile.pillars.hour.value}</p>
+              {reportData.meta.system === "bazi" ? (
+                <>
+                  <p>日主：{reportData.profile.dayMaster}</p>
+                  <p>命宫：{reportData.profile.mingGong}</p>
+                  <p>身宫：{reportData.profile.shenGong}</p>
+                  <p>四柱：{reportData.profile.pillars.year.value} / {reportData.profile.pillars.month.value} / {reportData.profile.pillars.day.value} / {reportData.profile.pillars.hour.value}</p>
+                </>
+              ) : (
+                <>
+                  <p>命宫：{reportData.ziweiProfile?.mingGong ?? "未定"}</p>
+                  <p>身宫：{reportData.ziweiProfile?.shenGong ?? "未定"}</p>
+                  <p>五行局：{reportData.ziweiProfile?.wuxingJuName ?? "未定"}</p>
+                  <p>紫微落宫：{reportData.ziweiProfile?.ziweiStarPalace ?? "未定"}</p>
+                </>
+              )}
               <p>本卦：{reportData.hexagram.name}</p>
               <p>变卦：{reportData.hexagram.changedName}</p>
             </section>

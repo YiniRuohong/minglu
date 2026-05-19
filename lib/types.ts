@@ -1,5 +1,6 @@
 export type CalendarType = "solar" | "lunar";
 export type GenderType = "male" | "female";
+export type DivinationSystem = "bazi" | "ziwei" | "hybrid";
 
 export type RoleCard = {
   id: string;
@@ -17,6 +18,7 @@ export type FortuneInput = {
   isLeapMonth: boolean;
   birthPlace: string;
   question: string;
+  divinationSystem: DivinationSystem;
   roleCard?: RoleCard;
 };
 
@@ -25,6 +27,7 @@ export type ClientModelConfig = {
   apiKey: string;
   model: string;
   temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
 };
 
 export type FortuneRequest = FortuneInput & {
@@ -88,6 +91,64 @@ export type BaziProfile = {
   daYun: DaYunItem[];
   fiveElements: FiveElementStats;
   fiveElementSummary: string;
+};
+
+export type ZiweiStar = {
+  name: string;
+  type: "major" | "minor" | "lucky" | "sha";
+  brightness?: "bright" | "normal" | "dim";
+  siHua?: "禄" | "权" | "科" | "忌";
+};
+
+export type ZiweiPalace = {
+  name: string;
+  branch: string;
+  stem: string;
+  stars: ZiweiStar[];
+  majorStars: string[];
+  borrowedFromName?: string;
+  daXianAge?: [number, number];
+  isMingGong?: boolean;
+  isShenGong?: boolean;
+  isCurrentDaXian?: boolean;
+};
+
+export type ZiweiPattern = {
+  name: string;
+  level: "excellent" | "good" | "neutral" | "caution";
+  description: string;
+  evidence: string[];
+  palaces: string[];
+};
+
+export type ZiweiProfile = {
+  subject: {
+    name: string;
+    gender: string;
+    birthPlace: string;
+    calendarType: CalendarType;
+    solarText: string;
+    lunarText: string;
+    question: string;
+  };
+  mingGong: string;
+  shenGong: string;
+  mingGongBranch: string;
+  shenGongBranch: string;
+  wuxingJuName: string;
+  ziweiStarPalace: string;
+  currentAge: number;
+  currentDaXian: {
+    palaceName: string;
+    ageRange: string;
+  } | null;
+  keyPalaces: Array<{
+    name: string;
+    summary: string;
+    stars: string[];
+  }>;
+  patterns: ZiweiPattern[];
+  palaces: ZiweiPalace[];
 };
 
 export type HexagramLine = {
@@ -166,6 +227,17 @@ export type PalaceCell = {
   score: number;
   marker: string;
   highlight: boolean;
+  slot?: string;
+  pillarDetail?: {
+    stem: string;
+    stemTenGod: string;
+    branch: string;
+    hiddenStems: string[];
+    branchTenGods: string[];
+    wuxing: string;
+    naYin: string;
+    diShi: string;
+  };
 };
 
 export type BoardMetric = {
@@ -182,6 +254,7 @@ export type PalaceConnection = {
 };
 
 export type DivinationBoard = {
+  layout: "cross4" | "ring12";
   phase: PhaseId;
   title: string;
   subtitle: string;
@@ -204,6 +277,7 @@ export type ReportDocument = {
 
 export type FortuneResponse = {
   profile: BaziProfile;
+  ziweiProfile?: ZiweiProfile;
   hexagram: Hexagram;
   analysis: FortuneAnalysis;
   board: DivinationBoard;
@@ -212,6 +286,7 @@ export type FortuneResponse = {
     model: string;
     source: "llm" | "fallback";
     configMode: "private" | "custom";
+    system: DivinationSystem;
     sourceDetail?: string;
   };
 };

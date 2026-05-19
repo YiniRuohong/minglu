@@ -8,6 +8,7 @@ import type {
   ClientModelConfig,
   ConversationMessage,
   DivinationBoard,
+  DivinationSystem,
   FortuneInput,
   FortuneRequest,
   FortuneResponse,
@@ -29,7 +30,7 @@ const defaultRoleCard: RoleCard = {
   systemPrompt:
     "你是一位遵循子平八字主线的中文命理助手，表达应克制、结构清晰、避免恐吓式断语。",
   guidance:
-    "先看四柱原局，再看月令、通根、透干、十神与大运。在线摇卦只作为当前问题节奏辅助，不改写四柱主判断。",
+    "先按当前选择的命理体系建立主盘，再看关键结构与阶段节奏。在线摇卦只作为当前问题节奏辅助，不改写主判断。",
 };
 
 const defaultForm: FortuneInput = {
@@ -41,6 +42,7 @@ const defaultForm: FortuneInput = {
   isLeapMonth: false,
   birthPlace: "",
   question: "",
+  divinationSystem: "hybrid",
   roleCard: defaultRoleCard,
 };
 
@@ -48,7 +50,7 @@ const introMessage: ConversationMessage = {
   id: "system-intro",
   role: "system",
   kind: "text",
-  content: "先在设置里填写命主资料，再直接提问。当前版本按子平八字主线分析，并会自动在线模拟摇卦。",
+  content: "先在设置里填写命主资料，再直接提问。当前版本支持四柱八字、紫微斗数与综合模式，并会自动在线模拟摇卦。",
 };
 
 const defaultCustomConfig: ClientModelConfig = {
@@ -65,12 +67,33 @@ const boardPositions = [
   "left-center",
 ];
 
+const systemLabelMap: Record<DivinationSystem, string> = {
+  bazi: "四柱八字",
+  ziwei: "紫微斗数",
+  hybrid: "紫微主盘综合",
+};
+
 const boardCoords: Record<string, { x: number; y: number }> = {
   年柱: { x: 50, y: 16 },
   月柱: { x: 84, y: 50 },
   日柱: { x: 50, y: 84 },
   时柱: { x: 16, y: 50 },
   中宫: { x: 50, y: 50 },
+};
+
+const ringSlotStyles: Record<string, React.CSSProperties> = {
+  "ring-巳": { gridRow: "1", gridColumn: "1" },
+  "ring-午": { gridRow: "1", gridColumn: "2" },
+  "ring-未": { gridRow: "1", gridColumn: "3" },
+  "ring-申": { gridRow: "1", gridColumn: "4" },
+  "ring-辰": { gridRow: "2", gridColumn: "1" },
+  "ring-酉": { gridRow: "2", gridColumn: "4" },
+  "ring-卯": { gridRow: "3", gridColumn: "1" },
+  "ring-戌": { gridRow: "3", gridColumn: "4" },
+  "ring-寅": { gridRow: "4", gridColumn: "1" },
+  "ring-丑": { gridRow: "4", gridColumn: "2" },
+  "ring-子": { gridRow: "4", gridColumn: "3" },
+  "ring-亥": { gridRow: "4", gridColumn: "4" },
 };
 
 const idlePalaces: PalaceCell[] = [
@@ -189,23 +212,48 @@ function PalaceCard({
   palace,
   position,
   activePhase,
+  style,
 }: {
   palace: PalaceCell;
   position: string;
   activePhase: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <article className={`palace-card ${position} ${palace.highlight ? "active" : ""} phase-${activePhase}`}>
+    <article
+      className={`palace-card ${position} ${palace.highlight ? "active" : ""} phase-${activePhase}`}
+      style={style}
+    >
       <div className="palace-head">
         <span>{palace.ageBand}</span>
         <em>{palace.branch}</em>
       </div>
       <h4>{palace.name}</h4>
-      <div className="palace-stars">
-        {palace.stars.map((star) => (
-          <span key={`${palace.name}-${star}`}>{star}</span>
-        ))}
-      </div>
+      {palace.pillarDetail ? (
+        <div className="pillar-detail">
+          <div className="pillar-main">
+            <strong>{palace.pillarDetail.stem}</strong>
+            <strong>{palace.pillarDetail.branch}</strong>
+          </div>
+          <div className="pillar-tags">
+            {[palace.pillarDetail.stemTenGod, palace.pillarDetail.diShi, palace.pillarDetail.naYin]
+              .filter(Boolean)
+              .map((item) => (
+                <span key={`${palace.name}-${item}`}>{item}</span>
+              ))}
+          </div>
+          <p>
+            藏干 {palace.pillarDetail.hiddenStems.join("、") || "无"} · 十神{" "}
+            {palace.pillarDetail.branchTenGods.join("、") || "未定"}
+          </p>
+        </div>
+      ) : (
+        <div className="palace-stars">
+          {palace.stars.map((star) => (
+            <span key={`${palace.name}-${star}`}>{star}</span>
+          ))}
+        </div>
+      )}
       <div className="palace-foot">
         <strong>{palace.marker}</strong>
         <span>{palace.score}</span>
@@ -468,6 +516,22 @@ function SettingsDrawer({
           </div>
           <div className="drawer-grid">
             <label>
+              <span>命理体系</span>
+              <select
+                value={form.divinationSystem}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    divinationSystem: e.target.value as FortuneInput["divinationSystem"],
+                  }))
+                }
+              >
+                <option value="hybrid">紫微主盘综合</option>
+                <option value="ziwei">紫微斗数</option>
+                <option value="bazi">四柱八字</option>
+              </select>
+            </label>
+            <label>
               <span>姓名</span>
               <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
             </label>
@@ -611,7 +675,7 @@ export default function HomePage() {
   );
 
   const profileSummary = useMemo(() => {
-    const parts = [form.name || "未命名", form.birthPlace || "未设置出生地"];
+    const parts = [systemLabelMap[form.divinationSystem], form.name || "未命名", form.birthPlace || "未设置出生地"];
     if (form.birthDate) {
       parts.push(form.birthDate);
     }
@@ -621,6 +685,20 @@ export default function HomePage() {
   const displayCenterText = board?.centerText?.length
     ? board.centerText
     : ["等待命主资料", "在左上角设置中填写参数", "然后像聊天一样直接提问"];
+  const isRingBoard = board?.layout === "ring12";
+  const boardVisualStyle = isRingBoard
+    ? ({
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gridTemplateRows: "repeat(4, minmax(0, 1fr))",
+        gridTemplateAreas: "none",
+      } as const)
+    : undefined;
+  const boardCenterStyle = isRingBoard
+    ? ({
+        gridRow: "2 / 4",
+        gridColumn: "2 / 4",
+      } as const)
+    : undefined;
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodeIds((prev) =>
@@ -912,6 +990,7 @@ export default function HomePage() {
             <div className="composer-panel">
               <div className="composer-summary">
                 <span>{roleCard.name}</span>
+                <span>{systemLabelMap[form.divinationSystem]}</span>
                 <span>{form.name || "未配置命主姓名"}</span>
                 <span>{form.birthDate || "未配置生日"}</span>
                 <span>{activeConfigLabel}</span>
@@ -955,21 +1034,25 @@ export default function HomePage() {
             </div>
 
             <p className="board-subtitle">
-              {board?.subtitle ?? "右侧会显示四柱摘要、起运与当前在线摇卦结果。"}
+              {board?.subtitle ?? "右侧会显示命盘摘要、关键宫位或四柱起运与当前在线摇卦结果。"}
             </p>
 
             <div className="palace-board compact">
-              <div className={`board-visual ${board ? "live" : "idle"} compact`}>
-                {board ? <PalaceConnections board={board} /> : null}
+              <div
+                className={`board-visual ${board ? "live" : "idle"} ${isRingBoard ? "ring12" : ""} compact`}
+                style={boardVisualStyle}
+              >
+                {board && !isRingBoard ? <PalaceConnections board={board} /> : null}
                 {displayPalaces.map((palace, index) => (
                   <PalaceCard
                     key={`${palace.name}-${palace.branch}`}
                     palace={palace}
-                    position={boardPositions[index] ?? "top-center"}
+                    position={palace.slot ?? boardPositions[index] ?? "top-center"}
                     activePhase={board?.phase ?? "intake"}
+                    style={palace.slot ? ringSlotStyles[palace.slot] : undefined}
                   />
                 ))}
-                <div className="board-center compact">
+                <div className="board-center compact" style={boardCenterStyle}>
                   {displayCenterText.map((line) => (
                     <p key={line}>{line}</p>
                   ))}

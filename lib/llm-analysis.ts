@@ -1,10 +1,19 @@
-import type { BaziProfile, FiveElementStats, FortuneAnalysis, Hexagram, RoleCard } from "@/lib/types";
+import type {
+  BaziProfile,
+  DivinationSystem,
+  FiveElementStats,
+  FortuneAnalysis,
+  Hexagram,
+  RoleCard,
+  ZiweiProfile,
+} from "@/lib/types";
 
 type Config = {
   baseUrl: string;
   apiKey: string;
   model: string;
   temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   headers?: Record<string, string>;
 };
 
@@ -75,6 +84,25 @@ export function parseFortuneAnalysisText(text: string) {
 function trimErrorBody(text: string) {
   const compact = text.replace(/\s+/g, " ").trim();
   return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+}
+
+function shouldSendReasoningEffort(config: Config) {
+  if (config.reasoningEffort) return true;
+
+  const model = config.model.toLowerCase();
+  const baseUrl = config.baseUrl.toLowerCase();
+  return baseUrl.includes("api.openai.com") && (/^o\d/.test(model) || model.startsWith("gpt-5"));
+}
+
+function buildReasoningEffort(config: Config) {
+  return config.reasoningEffort ?? "high";
+}
+
+function isUnsupportedReasoningError(status: number, body: string) {
+  return (
+    status === 400 &&
+    /reasoning_effort|unsupported\s+parameter|unknown\s+parameter|unrecognized\s+request\s+argument/i.test(body)
+  );
 }
 
 function wait(ms: number) {
@@ -336,7 +364,143 @@ ${hexagram.interpretation}
   };
 }
 
-function buildPromptAnchors(profile: BaziProfile, hexagram: Hexagram) {
+function buildZiweiFallback(profile: BaziProfile, hexagram: Hexagram, ziweiProfile: ZiweiProfile): FortuneAnalysis {
+  const currentDaXian = ziweiProfile.currentDaXian
+    ? `${ziweiProfile.currentDaXian.ageRange} ${ziweiProfile.currentDaXian.palaceName}`
+    : "未定";
+  const topPatterns = ziweiProfile.patterns.slice(0, 3);
+  const topPatternText = topPatterns.length
+    ? topPatterns.map((pattern) => `${pattern.name}：${pattern.description}`).join("；")
+    : "当前未命中强格局，需以宫位组合和三方四正细看。";
+  const keyPalaceLines = ziweiProfile.keyPalaces
+    .map((item) => `${item.name}：${item.summary}`)
+    .join("；");
+
+  return {
+    summary: `${profile.subject.name}此盘以紫微斗数看，命宫在${ziweiProfile.mingGong}，身宫在${ziweiProfile.shenGong}，五行局为${ziweiProfile.wuxingJuName}。当前重点应围绕命宫、财帛、官禄、迁移四宫联动，并结合大限 ${currentDaXian} 判断现实落点。`,
+    sections: [
+      {
+        title: "命宫与身宫",
+        content: `命宫 ${ziweiProfile.mingGong}，身宫 ${ziweiProfile.shenGong}。命宫主先天气质与人生主轴，身宫更偏后天表现与实际落点。`,
+      },
+      {
+        title: "四正与关键宫位",
+        content: keyPalaceLines,
+      },
+      {
+        title: "格局与会照",
+        content: topPatternText,
+      },
+      {
+        title: "当前大限",
+        content: `当前年龄 ${ziweiProfile.currentAge} 岁，对应大限 ${currentDaXian}。紫微斗数宜用大限验证阶段主题，再看现实问题的时点。`,
+      },
+      {
+        title: "摇卦卦象",
+        content: `${hexagram.name}，变卦${hexagram.changedName}。${hexagram.interpretation}`,
+      },
+    ],
+    keyMoments: [
+      `优先回看 ${currentDaXian} 前后，是否出现职业、居住地、关系结构或资源分配的转折。`,
+      "若命宫为空或主星不显，更应回看对宫和三方四正是否在现实中持续主导事件。",
+      "若官禄与财帛宫同向发力，现实中往往先体现为职业角色变化，再体现为收入模式变化。",
+      "若迁移宫反复被触发，常见于外出、换城市、跨团队、跨行业或公开曝光增加。",
+    ],
+    suggestions: [
+      "先用已发生的大限节点验盘，再谈未来十年，不要跳过校验。",
+      "紫微判断要看宫位联动，不宜只抓单颗主星下断语。",
+      "问时卦只辅助当前节奏，主判断仍以命盘结构与大限为先。",
+    ],
+    caution: "命理内容只可作传统文化研究与娱乐参考，不应替代医疗、法律、投资或现实人生决策。",
+    phaseExplanations: [
+      {
+        phase: "chart",
+        title: "紫微命盘定盘",
+        evidence: [`命宫 ${ziweiProfile.mingGong}`, `身宫 ${ziweiProfile.shenGong}`, `五行局 ${ziweiProfile.wuxingJuName}`],
+        reasoning: "先定命宫、身宫、五行局和十二宫主星分布，后续宫位联动才有依据。",
+        conclusion: "本轮判断以紫微命盘结构为骨架。",
+      },
+      {
+        phase: "tengod",
+        title: "关键宫位收束",
+        evidence: ziweiProfile.keyPalaces.map((item) => `${item.name} ${item.summary}`),
+        reasoning: "紫微斗数先抓命宫，再看财帛、官禄、迁移等关键宫的三方四正联动。",
+        conclusion: "判断重点应放在关键宫位如何形成主轴，而非只看单宫。",
+      },
+      {
+        phase: "balance",
+        title: "格局与会照",
+        evidence: topPatterns.length > 0 ? topPatterns.map((item) => `${item.name} ${item.evidence.join("、")}`) : ["未命中显著正格"],
+        reasoning: "格局是快速抽取盘面重心的方法，但必须结合吉煞、会照和空宫借星修正。",
+        conclusion: "格局可作为主线提示，不能替代整盘联看。",
+      },
+      {
+        phase: "dayun",
+        title: "大限验证",
+        evidence: [`当前年龄 ${ziweiProfile.currentAge}`, `当前大限 ${currentDaXian}`],
+        reasoning: "紫微斗数看时机，优先用大限落地，确认哪类主题正被现实激活。",
+        conclusion: "应先校验当前大限主题，再细化问题。",
+      },
+      {
+        phase: "hexagram",
+        title: "在线摇卦辅助",
+        evidence: [`本卦 ${hexagram.name}`, `变卦 ${hexagram.changedName}`],
+        reasoning: "问时卦只补当前节奏，不重写紫微命盘本身的长期结构。",
+        conclusion: "因此卦象只负责进退节奏与短期取舍。",
+      },
+      {
+        phase: "report_draft",
+        title: "报告收束",
+        evidence: ["已汇总宫位结构、格局提示、大限主题与问时卦", "已转写为可回看节点"],
+        reasoning: "最终报告应能让用户回看已发生事件，而不只是接受抽象评价。",
+        conclusion: "因此报告以验盘线索和结构化建议为核心。",
+      },
+    ],
+    fullReport: `# ${profile.subject.name}紫微斗数报告
+
+## 一、命盘骨架
+- 命宫：${ziweiProfile.mingGong}（${ziweiProfile.mingGongBranch}）
+- 身宫：${ziweiProfile.shenGong}（${ziweiProfile.shenGongBranch}）
+- 五行局：${ziweiProfile.wuxingJuName}
+- 紫微所在宫：${ziweiProfile.ziweiStarPalace}
+
+## 二、关键宫位
+${ziweiProfile.keyPalaces.map((item) => `- ${item.name}：${item.summary}`).join("\n")}
+
+## 三、格局提示
+${topPatterns.length > 0 ? topPatterns.map((pattern, index) => `${index + 1}. ${pattern.name}：${pattern.description}`).join("\n") : "当前未命中强格局，需回到关键宫位联动本身来判断。"}
+
+## 四、大限观察
+- 当前年龄：${ziweiProfile.currentAge}
+- 当前大限：${currentDaXian}
+
+## 五、在线摇卦辅助
+- 本卦：${hexagram.name}
+- 变卦：${hexagram.changedName}
+- 解读：${hexagram.interpretation}
+
+## 六、可验证方向
+1. 回看当前大限起始前后，是否发生角色、关系、地域、收入结构变化。
+2. 对照命宫与官禄、财帛、迁移四宫，确认现实事件主要落在哪条主线。
+3. 若盘感与现实长期不符，先复核出生时辰，再继续细断。
+
+## 七、提醒
+命理内容只可作传统文化研究与娱乐参考，不应替代现实决策。`,
+  };
+}
+
+function buildPromptAnchors(profile: BaziProfile, hexagram: Hexagram, ziweiProfile?: ZiweiProfile, system: DivinationSystem = "bazi") {
+  if (system !== "bazi" && ziweiProfile) {
+    const fallback = buildZiweiFallback(profile, hexagram, ziweiProfile);
+    return {
+      localSummary: fallback.summary,
+      localSections: fallback.sections,
+      localKeyMoments: fallback.keyMoments,
+      localSuggestions: fallback.suggestions,
+      localPhaseExplanations: fallback.phaseExplanations,
+    };
+  }
+
   const fallback = buildFallback(profile, hexagram);
   return {
     localSummary: fallback.summary,
@@ -347,10 +511,22 @@ function buildPromptAnchors(profile: BaziProfile, hexagram: Hexagram) {
   };
 }
 
-function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCard) {
-  const anchors = buildPromptAnchors(profile, hexagram);
+function buildPrompt(
+  profile: BaziProfile,
+  hexagram: Hexagram,
+  roleCard?: RoleCard,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
+) {
+  const anchors = buildPromptAnchors(profile, hexagram, ziweiProfile, system);
+  const systemGuide =
+    system === "bazi"
+      ? "你是一名四柱八字研究助手。分析时请严格以子平法为主，优先遵循《渊海子平》《子平真诠》的判断顺序，并参考《滴天髓》《三命通会》《穷通宝典》《千里命稿》《神峰通考》作补充。不要混用六爻、紫微、星宗、心理测试式表达。"
+      : system === "ziwei"
+        ? "你是一名紫微斗数研究助手。分析时请严格以命宫、身宫、三方四正、格局、吉煞会照与大限为主线，不要把四柱旺衰当作主判断，只可把在线摇卦作为当下问题的辅助节奏。"
+        : "你是一名综合命理研究助手。主线以紫微斗数的宫位结构和大限为先，四柱八字只作校验补充，在线摇卦只辅助当前问题节奏，不得喧宾夺主。";
   return `
-你是一名四柱八字研究助手。分析时请严格以子平法为主，优先遵循《渊海子平》《子平真诠》的判断顺序，并参考《滴天髓》《三命通会》《穷通宝典》《千里命稿》《神峰通考》作补充。不要混用六爻、紫微、星宗、心理测试式表达。
+${systemGuide}
 
 你必须固定遵守以下顺序：
 1. 先定四柱与日主
@@ -372,7 +548,7 @@ function buildPrompt(profile: BaziProfile, hexagram: Hexagram, roleCard?: RoleCa
 2. 不要恐吓，不要绝对化预言
 3. 若信息不足或古法上存在分歧，必须直接点明
 4. 必须给出可验证的已发生关键事件，用于用户校验
-5. 四柱为主体；在线模拟摇卦 ${hexagram.name} 只能作为当前问题的辅助节奏，不得改写四柱主判断
+5. ${system === "bazi" ? "四柱为主体" : system === "ziwei" ? "紫微命盘为主体" : "紫微命盘为主体、四柱为补充"}；在线模拟摇卦 ${hexagram.name} 只能作为当前问题的辅助节奏，不得改写主判断
 6. 允许充分展开分析，但每一段都必须回到命盘证据，不要空泛玄谈
 7. 你会收到一份“本地结构锚点”，那是程序根据固定规则提炼出的基础判断。你应在不违背这些基础锚点的前提下，进一步深化推理、补充分歧点、扩展已发生事件校验，而不是机械复述锚点
 8. 输出严格为 JSON，不要额外说明
@@ -410,6 +586,9 @@ ${roleCard ? JSON.stringify(roleCard, null, 2) : "未提供额外角色卡。"}
 排盘资料：
 ${JSON.stringify(profile, null, 2)}
 
+紫微资料：
+${ziweiProfile ? JSON.stringify(ziweiProfile, null, 2) : "未启用紫微资料。"}
+
 在线摇卦资料：
 ${JSON.stringify(hexagram, null, 2)}
 
@@ -423,8 +602,11 @@ function buildRequestBody(
   hexagram: Hexagram,
   config: Config,
   roleCard?: RoleCard,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
+  includeReasoningEffort = true,
 ) {
-  return {
+  const body: Record<string, unknown> = {
     model: config.model,
     temperature: config.temperature ?? 0.7,
     messages: [
@@ -436,10 +618,16 @@ function buildRequestBody(
       },
       {
         role: "user",
-        content: buildPrompt(profile, hexagram, roleCard),
+        content: buildPrompt(profile, hexagram, roleCard, ziweiProfile, system),
       },
     ],
   };
+
+  if (includeReasoningEffort && shouldSendReasoningEffort(config)) {
+    body.reasoning_effort = buildReasoningEffort(config);
+  }
+
+  return body;
 }
 
 async function callModelAnalysis(
@@ -447,11 +635,14 @@ async function callModelAnalysis(
   hexagram: Hexagram,
   config: Config,
   roleCard?: RoleCard,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
 ) {
   let lastError = "";
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
+      const requestBody = buildRequestBody(profile, hexagram, config, roleCard, ziweiProfile, system);
       const response = await fetch(config.baseUrl, {
         method: "POST",
         headers: {
@@ -459,12 +650,40 @@ async function callModelAnalysis(
           Authorization: `Bearer ${config.apiKey}`,
           ...config.headers,
         },
-        body: JSON.stringify(buildRequestBody(profile, hexagram, config, roleCard)),
+        body: JSON.stringify(requestBody),
         cache: "no-store",
       });
-
       if (!response.ok) {
         const body = trimErrorBody(await response.text().catch(() => ""));
+        if (isUnsupportedReasoningError(response.status, body)) {
+          const retry = await fetch(config.baseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${config.apiKey}`,
+              ...config.headers,
+            },
+            body: JSON.stringify(
+              buildRequestBody(profile, hexagram, config, roleCard, ziweiProfile, system, false),
+            ),
+            cache: "no-store",
+          });
+
+          if (retry.ok) {
+            const data = (await retry.json()) as {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+            const content = data.choices?.[0]?.message?.content;
+            if (!content) {
+              throw new Error(`模型 ${config.model} 未返回内容。`);
+            }
+
+            return {
+              analysis: extractJson(content),
+              detail: `已成功调用 ${config.model}；当前接口不支持 reasoning_effort，已自动兼容。`,
+            };
+          }
+        }
         lastError = `模型 ${config.model} 请求失败: ${response.status}${body ? ` ${body}` : ""}`;
         if (RETRYABLE_STATUS.has(response.status) && attempt < 3) {
           await wait(400 * attempt);
@@ -483,7 +702,7 @@ async function callModelAnalysis(
 
       return {
         analysis: extractJson(content),
-        detail: `已成功调用 ${config.model}。`,
+        detail: `已成功调用 ${config.model}${shouldSendReasoningEffort(config) ? `，reasoning_effort=${buildReasoningEffort(config)}` : ""}。`,
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message : `模型 ${config.model} 调用失败。`;
@@ -497,30 +716,83 @@ async function callModelAnalysis(
   throw new Error(lastError || `模型 ${config.model} 调用失败。`);
 }
 
+export async function createFortuneAnalysis(
+  profile: BaziProfile,
+  hexagram: Hexagram,
+  configs: Config[],
+  roleCard?: RoleCard,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
+) {
+  if (configs.length === 0) {
+    return {
+      analysis:
+        system !== "bazi" && ziweiProfile
+          ? buildZiweiFallback(profile, hexagram, ziweiProfile)
+          : buildFallback(profile, hexagram),
+      source: "fallback" as const,
+      detail: "未检测到可用模型配置，直接使用本地规则兜底。",
+    };
+  }
+
+  try {
+    const result = await callModelAnalysis(profile, hexagram, configs[0], roleCard, ziweiProfile, system);
+    return {
+      analysis: result.analysis,
+      source: "llm" as const,
+      detail: result.detail,
+    };
+  } catch (error) {
+    return {
+      analysis:
+        system !== "bazi" && ziweiProfile
+          ? buildZiweiFallback(profile, hexagram, ziweiProfile)
+          : buildFallback(profile, hexagram),
+      source: "fallback" as const,
+      detail: error instanceof Error ? error.message : "模型调用失败，已切换本地规则兜底。",
+    };
+  }
+}
+
 export async function streamFortuneDraft(
   profile: BaziProfile,
   hexagram: Hexagram,
   config: Config,
   roleCard: RoleCard | undefined,
   onDelta: (text: string) => void,
+  ziweiProfile?: ZiweiProfile,
+  system: DivinationSystem = "bazi",
 ) {
-  const response = await fetch(config.baseUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-      ...config.headers,
-    },
-    body: JSON.stringify({
-      ...buildRequestBody(profile, hexagram, config, roleCard),
-      stream: true,
-    }),
-    cache: "no-store",
-  });
+  const requestStream = (includeReasoningEffort = true) =>
+    fetch(config.baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+        ...config.headers,
+      },
+      body: JSON.stringify({
+        ...buildRequestBody(profile, hexagram, config, roleCard, ziweiProfile, system, includeReasoningEffort),
+        stream: true,
+      }),
+      cache: "no-store",
+    });
+
+  let response = await requestStream();
 
   if (!response.ok || !response.body) {
     const body = trimErrorBody(await response.text().catch(() => ""));
+    if (isUnsupportedReasoningError(response.status, body)) {
+      response = await requestStream(false);
+      if (response.ok && response.body) {
+        onDelta("当前模型接口不支持 reasoning_effort 参数，已自动切换到兼容流式输出；盘面结构仍按本地四柱/紫微结果固定。");
+      } else {
+        const retryBody = trimErrorBody(await response.text().catch(() => ""));
+        throw new Error(`模型 ${config.model} 流式请求失败: ${response.status}${retryBody ? ` ${retryBody}` : ""}`);
+      }
+    } else {
     throw new Error(`模型 ${config.model} 流式请求失败: ${response.status}${body ? ` ${body}` : ""}`);
+    }
   }
 
   const decoder = new TextDecoder();
@@ -547,7 +819,7 @@ export async function streamFortuneDraft(
         if (!line || line === "[DONE]") continue;
         try {
           const data = JSON.parse(line) as {
-            choices?: Array<{ delta?: { content?: string } }>;
+            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
           };
           const text = data.choices?.[0]?.delta?.content;
           if (text) {
@@ -562,40 +834,4 @@ export async function streamFortuneDraft(
   }
 
   return accumulated;
-}
-
-export async function createFortuneAnalysis(
-  profile: BaziProfile,
-  hexagram: Hexagram,
-  config?: Config | Config[] | null,
-  roleCard?: RoleCard,
-): Promise<{ analysis: FortuneAnalysis; source: "llm" | "fallback"; detail?: string }> {
-  const configs = Array.isArray(config) ? config : config ? [config] : [];
-  if (configs.length === 0) {
-    return {
-      analysis: buildFallback(profile, hexagram),
-      source: "fallback",
-      detail: "未提供可用模型配置，已使用本地规则兜底。",
-    };
-  }
-
-  const errors: string[] = [];
-  for (const currentConfig of configs) {
-    try {
-      const result = await callModelAnalysis(profile, hexagram, currentConfig, roleCard);
-      return {
-        analysis: result.analysis,
-        source: "llm",
-        detail: result.detail,
-      };
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : `模型 ${currentConfig.model} 调用失败。`);
-    }
-  }
-
-  return {
-    analysis: buildFallback(profile, hexagram),
-    source: "fallback",
-    detail: errors.join(" | "),
-  };
 }

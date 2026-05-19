@@ -6,6 +6,7 @@ export type FortuneConfig = {
   apiKey: string;
   model: string;
   temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   headers?: Record<string, string>;
 };
 
@@ -22,6 +23,7 @@ export function normalizeFortuneConfig(config: FortuneConfig): FortuneConfig {
   return {
     ...config,
     baseUrl: normalizeBaseUrl(config.baseUrl),
+    reasoningEffort: config.reasoningEffort ?? "high",
   };
 }
 
@@ -44,12 +46,17 @@ function readFortuneConfigFromEnv(): FortuneConfig | null {
   }
 
   const temperature = process.env.FORTUNE_TEMPERATURE?.trim();
+  const reasoningEffort = process.env.FORTUNE_REASONING_EFFORT?.trim();
 
   return normalizeFortuneConfig({
     baseUrl,
     apiKey,
     model,
     temperature: temperature ? Number(temperature) : undefined,
+    reasoningEffort:
+      reasoningEffort === "low" || reasoningEffort === "medium" || reasoningEffort === "high"
+        ? reasoningEffort
+        : undefined,
     headers: parseHeadersEnv(process.env.FORTUNE_HEADERS_JSON),
   });
 }

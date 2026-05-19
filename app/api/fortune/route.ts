@@ -4,6 +4,7 @@ import { buildDivinationBoard, buildStreamingBoard } from "@/lib/divination-boar
 import { normalizeFortuneConfig, readFortuneConfig } from "@/lib/fortune-config";
 import { buildHexagram } from "@/lib/hexagram";
 import { createFortuneAnalysis, parseFortuneAnalysisText, streamFortuneDraft } from "@/lib/llm-analysis";
+import { buildZiweiProfile } from "@/lib/ziwei-data";
 import type {
   ConversationMessage,
   FortuneInput,
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
         send(
           assistantMessage(
             "intro-assistant",
-            `已收到 ${input.name} 的问题。我会先校验资料，再按四柱、月令、十神、大运的次序排盘，同时自动在线模拟摇卦，最后整理成报告。`,
+            `已收到 ${input.name} 的问题。我会先校验资料，再按${input.divinationSystem === "ziwei" ? "紫微命盘" : input.divinationSystem === "hybrid" ? "紫微主盘并参考四柱" : "四柱、月令、十神、大运"}的次序排盘，同时自动在线模拟摇卦，最后整理成报告。`,
             "intake",
           ),
         );
@@ -133,11 +134,12 @@ export async function POST(request: Request) {
         await wait(180);
 
         const profile = buildBaziProfile(input);
+        const ziweiProfile = input.divinationSystem === "bazi" ? undefined : buildZiweiProfile(input);
         const hexagram = buildHexagram(input, nowIso());
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "calendar"),
+          board: buildDivinationBoard(profile, hexagram, "calendar", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -152,7 +154,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "chart"),
+          board: buildDivinationBoard(profile, hexagram, "chart", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -166,7 +168,9 @@ export async function POST(request: Request) {
         send(
           assistantMessage(
             "msg-chart",
-            `四柱已成盘，当前日主为 ${profile.dayMaster}，月柱 ${profile.pillars.month.value}，起运时间 ${profile.luckStart}。正在转入月令与十神次序判断。`,
+            input.divinationSystem === "bazi"
+              ? `四柱已成盘，当前日主为 ${profile.dayMaster}，月柱 ${profile.pillars.month.value}，起运时间 ${profile.luckStart}。正在转入月令与十神次序判断。`
+              : `命盘已成盘，当前命宫为 ${ziweiProfile?.mingGong ?? "未定"}，身宫 ${ziweiProfile?.shenGong ?? "未定"}，五行局 ${ziweiProfile?.wuxingJuName ?? "未定"}。正在转入关键宫位与大限判断。`,
             "chart",
           ),
         );
@@ -174,7 +178,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "tengod"),
+          board: buildDivinationBoard(profile, hexagram, "tengod", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -189,7 +193,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "balance"),
+          board: buildDivinationBoard(profile, hexagram, "balance", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -204,7 +208,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "dayun"),
+          board: buildDivinationBoard(profile, hexagram, "dayun", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -219,7 +223,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "hexagram"),
+          board: buildDivinationBoard(profile, hexagram, "hexagram", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -234,7 +238,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "palace"),
+          board: buildDivinationBoard(profile, hexagram, "palace", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -242,14 +246,16 @@ export async function POST(request: Request) {
             "node-palace",
             "palace",
             "收束古法摘要",
-            "已将四柱本体与在线摇卦摘要同步写入右侧面板，便于边看排盘边看当前问题的节奏变化。",
+            input.divinationSystem === "bazi"
+              ? "已将四柱本体与在线摇卦摘要同步写入右侧面板，便于边看排盘边看当前问题的节奏变化。"
+              : "已将紫微关键宫位、格局提示与在线摇卦摘要同步写入右侧面板，便于边看盘边看当下节奏变化。",
           ),
         });
         await wait(220);
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "connection"),
+          board: buildDivinationBoard(profile, hexagram, "connection", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -315,7 +321,7 @@ export async function POST(request: Request) {
 
         send({
           type: "board",
-          board: buildDivinationBoard(profile, hexagram, "report_draft"),
+          board: buildDivinationBoard(profile, hexagram, "report_draft", ziweiProfile, input.divinationSystem),
         });
         send({
           type: "node",
@@ -332,19 +338,26 @@ export async function POST(request: Request) {
         let source: "llm" | "fallback" = "fallback";
         let detail = "";
         let streamed = false;
+        let usedModel = candidateConfigs[0]?.model ?? "classic-local";
 
         if (candidateConfigs.length > 0) {
           send(
             assistantMessage(
               draftMessageId,
-              "模型正在展开解读...",
+              "模型正在展开可公开的推演步骤摘要...",
               "report_draft",
             ),
           );
 
           for (const candidateConfig of candidateConfigs) {
             try {
-              const baseDraftBoard = buildDivinationBoard(profile, hexagram, "report_draft");
+              const baseDraftBoard = buildDivinationBoard(
+                profile,
+                hexagram,
+                "report_draft",
+                ziweiProfile,
+                input.divinationSystem,
+              );
               const streamedText = await streamFortuneDraft(
                 profile,
                 hexagram,
@@ -357,11 +370,14 @@ export async function POST(request: Request) {
                     board: buildStreamingBoard(baseDraftBoard, draft, profile),
                   });
                 },
+                ziweiProfile,
+                input.divinationSystem,
               );
 
               analysis = parseFortuneAnalysisText(streamedText);
               source = "llm";
-              detail = `已成功调用 ${candidateConfig.model} 并启用流式解读。`;
+              usedModel = candidateConfig.model;
+              detail = `已成功调用 ${candidateConfig.model} 并启用流式解读；若模型支持 reasoning_effort，本次按 high 请求。`;
               streamed = true;
               break;
             } catch (error) {
@@ -376,6 +392,8 @@ export async function POST(request: Request) {
             hexagram,
             candidateConfigs,
             input.roleCard,
+            ziweiProfile,
+            input.divinationSystem,
           );
           analysis = fallbackResult.analysis;
           source = fallbackResult.source;
@@ -383,25 +401,27 @@ export async function POST(request: Request) {
         }
 
         const board = buildStreamingBoard(
-          buildDivinationBoard(profile, hexagram, "report"),
+          buildDivinationBoard(profile, hexagram, "report", ziweiProfile, input.divinationSystem),
           analysis.summary,
           profile,
         );
 
         const result: FortuneResponse = {
           profile,
+          ziweiProfile,
           hexagram,
           analysis,
           board,
           report: {
-            title: `${profile.subject.name} · 四柱与问时卦报告`,
+            title: `${profile.subject.name} · ${input.divinationSystem === "bazi" ? "四柱与问时卦" : input.divinationSystem === "ziwei" ? "紫微斗数与问时卦" : "紫微主盘综合"}报告`,
             markdown: analysis.fullReport,
             generatedAt: nowIso(),
           },
           meta: {
-            model: candidateConfigs[0]?.model ?? "classic-local",
+            model: usedModel,
             source,
             configMode: unlocked ? "private" : "custom",
+            system: input.divinationSystem,
             sourceDetail: [configDetail, detail].filter(Boolean).join(" "),
           },
         };
@@ -429,7 +449,7 @@ export async function POST(request: Request) {
             "report",
             source === "llm" ? "模型深度解读已接入" : "回退到本地兜底",
             source === "llm"
-              ? `本次已调用 ${candidateConfigs[0]?.model ?? "已配置模型"} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。${[configDetail, detail].filter(Boolean).join(" ")}`
+              ? `本次已调用 ${usedModel} 参与解读，四柱结构由本地排盘固定，展开性推理与文案由模型补充。${[configDetail, detail].filter(Boolean).join(" ")}`
               : `本次未成功调用模型，当前展示的是本地规则兜底分析。${[configDetail, detail].filter(Boolean).join(" ")}`,
           ),
         });
@@ -439,7 +459,7 @@ export async function POST(request: Request) {
             "node-report",
             "report",
             "总报告生成完成",
-            `已按四柱主线与问时卦辅助收束成结构化报告${config ? `，并调用 ${config.model} 完成文案推断。` : "，当前使用本地兜底分析。"} `,
+            `已按四柱主线与问时卦辅助收束成结构化报告${source === "llm" ? `，并调用 ${usedModel} 完成文案推断。` : "，当前使用本地兜底分析。"} `,
           ),
         });
         send(
